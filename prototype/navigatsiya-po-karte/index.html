@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Прототип: навигация по карте</title>
+<!--
+  PROTOTYPE, not production.
+  Question: how the path мир → страна → город → улица → список уровней feels,
+  and how a locked level, an open level, and a cleared level with stars differ.
+  Three variants via ?variant=A|B|C.
+-->
+<style>
+  :root {
+    --bg: #100e14;
+    --ink: #f6f1e8;
+    --dim: #6d6878;
+    --dim-bg: #221f28;
+    --cyan: #79f6ff;
+    --pink: #ff5ad4;
+    --gold: #ffe56a;
+    --line: #3a3544;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: #1a1720;
+    color: var(--ink);
+    font-family: "Courier New", ui-monospace, monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 18px 16px 168px;
+  }
+  .ask {
+    max-width: 640px;
+    margin: 0;
+    line-height: 1.45;
+    font-size: 14px;
+  }
+  .ask strong { color: var(--cyan); }
+  .phone {
+    width: 390px;
+    height: 760px;
+    background: var(--bg);
+    border: 10px solid #0a090d;
+    border-radius: 28px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 20px 60px #000a;
+  }
+  .screen { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+  .art { flex: 1; min-height: 0; position: relative; overflow: auto; }
+  .hud-still, .stam, .tube, .hud-strip, .lv, .card, .tag, .hang, .back {
+    animation: none !important;
+  }
+  button {
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    border: 2px solid var(--line);
+    cursor: pointer;
+  }
+  button.bright, .place.bright {
+    color: var(--cyan);
+    border-color: var(--cyan);
+    text-shadow: 0 0 8px var(--cyan);
+  }
+  button.dim, .place.dim {
+    color: var(--dim);
+    border-color: #3a3644;
+    background: var(--dim-bg);
+  }
+  .sign { animation: pulse 2.6s ease-in-out infinite; }
+  .tipsy .sign { animation-duration: 1.8s; }
+  .drunk .sign { animation-duration: 1.05s; }
+  .wasted .sign { animation-duration: 0.55s; }
+  .tipsy.art { animation: sway 3.6s ease-in-out infinite; }
+  .drunk.art { animation: sway 2s ease-in-out infinite; }
+  .wasted.art { animation: sway 0.9s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.55; filter: brightness(1.4); } }
+  @keyframes sway { 50% { transform: rotate(1.4deg) translateY(3px); } }
+  .wasted.art { --sway: 3deg; }
+  @keyframes sway-hard { 50% { transform: rotate(2.8deg) translateY(6px); } }
+  .wasted.art { animation-name: sway-hard; }
+
+  .va .top, .vb .hud-strip, .vc .top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 14px 12px 8px;
+  }
+  .va .cluster { display: flex; align-items: center; gap: 8px; }
+  .va .where { font-size: 18px; letter-spacing: 0.08em; }
+  .va .stam, .vb .hud-strip { text-align: right; line-height: 1.2; }
+  .va .stam b, .vb .hud-strip b { display: block; font-size: 22px; color: var(--gold); }
+  .va .stam span, .vb .hud-strip span { color: var(--pink); font-size: 13px; }
+  .va .back, .vc .hang {
+    border-color: var(--pink);
+    color: var(--pink);
+    padding: 6px 8px;
+  }
+  .va .grid, .vc .grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+  }
+  .va .place, .vc .place {
+    padding: 16px 12px;
+    text-align: left;
+    font-size: 20px;
+  }
+  .va .list, .vc .board { padding: 8px 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .va .lv {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    text-align: left;
+  }
+  .va .lv.locked { color: var(--dim); }
+  .va .lv.open { border-color: var(--cyan); color: var(--cyan); }
+  .va .lv.cleared { border-color: var(--gold); color: var(--gold); }
+  .va .lv .num { font-size: 18px; }
+
+  .vb .body { flex: 1; min-height: 0; display: flex; }
+  .vb .spine {
+    width: 92px;
+    border-right: 2px solid var(--line);
+    display: flex;
+    flex-direction: column;
+  }
+  .vb .spine button {
+    flex: 1;
+    border: 0;
+    border-bottom: 2px solid var(--line);
+    color: var(--dim);
+    letter-spacing: 0.06em;
+  }
+  .vb .spine button.on { color: var(--cyan); background: #142226; }
+  .vb .spine button.been { color: var(--ink); }
+  .vb .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .vb .hud-strip { border-bottom: 2px solid var(--line); display: block; text-align: left; }
+  .vb .places { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; align-content: flex-start; }
+  .vb .place { width: calc(50% - 4px); min-height: 72px; }
+  .vb .film {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 16px 12px;
+    align-items: stretch;
+  }
+  .vb .card {
+    flex: 0 0 104px;
+    height: 140px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 10px;
+  }
+  .vb .card.locked { color: var(--dim); background: #18161c; }
+  .vb .card.open { border-color: var(--cyan); color: var(--cyan); box-shadow: inset 0 0 0 4px #12363a; }
+  .vb .card.cleared { border-color: var(--gold); color: var(--gold); background: #241e0e; }
+  .vb .card .big { font-size: 28px; }
+
+  .vc { background: #07060a; }
+  .vc .window {
+    margin: 0 16px;
+    border: 3px solid var(--pink);
+    box-shadow: 0 0 18px #ff5ad455;
+    min-height: 0;
+    flex: 1;
+    overflow: auto;
+  }
+  .vc .marquee {
+    text-align: center;
+    color: var(--pink);
+    letter-spacing: 0.28em;
+    padding: 16px 8px 8px;
+    font-size: 14px;
+  }
+  .vc .tube {
+    margin: 8px 16px 12px;
+    border: 2px solid var(--gold);
+    color: var(--gold);
+    padding: 8px 10px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .vc .hang { margin: 0 16px 8px; align-self: flex-start; }
+  .vc .tag {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 8px;
+    border-bottom: 2px dashed #4a3b28;
+    width: 100%;
+    text-align: left;
+  }
+  .vc .tag.locked { color: #5c5348; border-style: dotted; }
+  .vc .tag.open { color: var(--cyan); }
+  .vc .tag.cleared { color: var(--gold); }
+
+  .dead {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+    text-align: center;
+    padding: 24px;
+  }
+  .dead h1 { font-size: 28px; margin: 0; letter-spacing: 0.04em; }
+  .dead button {
+    border-color: var(--cyan);
+    color: var(--cyan);
+    padding: 14px 18px;
+    font-size: 18px;
+  }
+
+  .state {
+    max-width: 640px;
+    min-height: 2.8em;
+    margin: 0;
+    color: #c8c2b4;
+    font-size: 13px;
+  }
+  .chrome, .switcher {
+    position: fixed;
+    z-index: 5;
+    background: #0e0c12;
+    border: 2px solid var(--gold);
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    padding: 6px 8px;
+  }
+  .chrome {
+    left: 12px;
+    right: 12px;
+    bottom: 64px;
+    flex-wrap: wrap;
+    justify-content: center;
+    border-radius: 16px;
+  }
+  .switcher {
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 14px;
+    border-color: #fff;
+    border-radius: 999px;
+  }
+  .chrome span, .switcher span { white-space: nowrap; font-size: 12px; padding: 0 6px; }
+  .chrome button, .switcher button {
+    border-radius: 999px;
+    padding: 6px 8px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .switcher button { border-color: #fff; }
+</style>
+</head>
+<body>
+  <p class="ask">Вопрос тикета «Навигация по карте»: как ощущается путь <strong>мир → страна → город → улица → список уровней</strong>, что ярко, что тускло, и как отличить закрытый уровень, открытый и пройденный со звёздами. Индикатор — запас / потолок и подпись состояния. Панель внизу — оболочка прототипа, не экран игры.</p>
+  <div class="phone" id="phone"></div>
+  <p class="state" id="state"></p>
+  <div class="chrome" id="chrome">
+    <span>прототип</span>
+    <button type="button" data-preset="fresh">С нуля</button>
+    <button type="button" data-preset="mid">Середина</button>
+    <button type="button" data-preset="done">Бар пройден</button>
+    <button type="button" data-preset="dead">Запуск после гибели</button>
+    <button type="button" data-mood="120,120">120/120 Трезв</button>
+    <button type="button" data-mood="70,120">70/120 Навеселе</button>
+    <button type="button" data-mood="40,120">40/120 Пьян</button>
+    <button type="button" data-mood="20,120">20/120 В хлам</button>
+    <button type="button" data-mood="75,150">75/150 Навеселе</button>
+  </div>
+  <div class="switcher" id="switcher">
+    <button type="button" id="prev" aria-label="Предыдущий вариант">←</button>
+    <span id="vlabel"></span>
+    <button type="button" id="next" aria-label="Следующий вариант">→</button>
+  </div>
+<script>
+const VARIANTS = ['A', 'B', 'C'];
+const VARIANT_NAME = {
+  A: 'Лестница масштабов',
+  B: 'Лента пути',
+  C: 'Вывеска'
+};
+
+const TREE = {
+  by: {
+    name: 'Беларусь',
+    cities: {
+      minsk: {
+        name: 'Минск',
+        streets: {
+          zybitskaya: {
+            name: 'Зыбицкая',
+            bars: [
+              ['under', 'Under', 8],
+              ['koyot', 'Койот', 8],
+              ['zodiac', 'Zodiac', 12],
+              ['ryadom', 'Рядом', 12],
+              ['belyj', 'Белый Налив', 16],
+              ['gorkij', 'Горький', 16],
+              ['nadne', 'На дне', 20],
+              ['matreshka', 'Матрешка', 20]
+            ]
+          }
+        },
+        dim: ['Немига', 'Интернациональная']
+      },
+      vitebsk: {
+        name: 'Витебск',
+        streets: {
+          suvorova: {
+            name: 'Суворова',
+            bars: [
+              ['lev', 'Золотой лев', 8],
+              ['marvin', 'Марвин', 12],
+              ['damask', '«Damask» Kafe-Bar', 16],
+              ['apteka', 'Аптека бар', 20]
+            ]
+          }
+        },
+        dim: ['Ленина']
+      }
+    },
+    dim: ['Гомель', 'Брест']
+  },
+  ru: {
+    name: 'Россия',
+    cities: {
+      moscow: {
+        name: 'Москва',
+        streets: {
+          patriki: {
+            name: 'Патрики',
+            bars: [
+              ['kianu', 'Киану', 8],
+              ['bron', 'Bro&n', 12],
+              ['zojka', 'Зойка', 20]
+            ]
+          }
+        },
+        dim: ['Арбат']
+      }
+    },
+    dim: ['Санкт-Петербург', 'Смоленск']
+  }
+};
+const DIM_COUNTRIES = ['Польша', 'Украина', 'Латвия'];
+
+const state = {
+  country: null,
+  city: null,
+  street: null,
+  bar: null,
+  alive: true,
+  stock: 120,
+  cap: 120,
+  stars: {},
+  notice: 'Запуск открывает мир.'
+};
+
+let variant = 'A';
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+function blank(n) { return Array(n).fill(null); }
+function moodName(stock, cap) {
+  if (stock <= 0) return 'Погиб';
+  const q = stock / cap;
+  if (q >= 0.75) return 'Трезв';
+  if (q >= 0.5) return 'Навеселе';
+  if (q >= 0.25) return 'Пьян';
+  return 'В хлам';
+}
+function moodClass() {
+  const name = moodName(state.stock, state.cap);
+  return { 'Трезв': 'sober', 'Навеселе': 'tipsy', 'Пьян': 'drunk', 'В хлам': 'wasted' }[name] || 'sober';
+}
+function findBar(id) {
+  for (const country of Object.values(TREE)) {
+    for (const city of Object.values(country.cities)) {
+      for (const street of Object.values(city.streets)) {
+        for (const [bid, name, levels] of street.bars) {
+          if (bid === id) return { id: bid, name, levels };
+        }
+      }
+    }
+  }
+  return null;
+}
+function starsOf(bar) {
+  if (!state.stars[bar.id]) state.stars[bar.id] = blank(bar.levels);
+  return state.stars[bar.id];
+}
+function levelKind(row, index) {
+  const open = index === 0 || row[index - 1] != null;
+  if (!open) return 'locked';
+  if (row[index] == null) return 'open';
+  return 'cleared';
+}
+function resetProgress() { state.stars = {}; }
+function goWorld() {
+  state.country = state.city = state.street = state.bar = null;
+}
+function newGame() {
+  state.alive = true;
+  state.stock = 120;
+  state.cap = 120;
+  resetProgress();
+  goWorld();
+  state.notice = 'Новая игра. Запас и потолок 120/120. В каждом баре открыт первый уровень.';
+}
+function scaleName() {
+  if (!state.alive) return 'гибель';
+  if (state.bar) return 'список уровней';
+  if (state.street) return 'улица';
+  if (state.city) return 'город';
+  if (state.country) return 'страна';
+  return 'мир';
+}
+function pathText() {
+  const bits = ['Мир'];
+  if (state.country) bits.push(TREE[state.country].name);
+  if (state.city) bits.push(TREE[state.country].cities[state.city].name);
+  if (state.street) bits.push(currentStreet().name);
+  if (state.bar) bits.push(findBar(state.bar).name);
+  return bits.join(' → ');
+}
+function currentStreet() {
+  return TREE[state.country].cities[state.city].streets[state.street];
+}
+function placeButtons(bright, dim) {
+  const a = bright.map((p) => `<button type="button" class="place bright sign" data-act="${esc(p.act)}" data-id="${esc(p.id)}">${esc(p.name)}</button>`).join('');
+  const b = dim.map((name) => `<button type="button" class="place dim" data-act="dim" data-name="${esc(name)}">${esc(name)}</button>`).join('');
+  return a + b;
+}
+function levelButtons(as) {
+  const bar = findBar(state.bar);
+  const row = starsOf(bar);
+  return row.map((stars, index) => {
+    const kind = levelKind(row, index);
+    const mark = kind === 'locked' ? 'закрыт' : kind === 'open' ? 'открыт' : '★'.repeat(stars);
+    if (as === 'row') {
+      return `<button type="button" class="lv ${kind}" data-act="level" data-i="${index}"><span class="num">${index + 1}</span><span>${mark}</span></button>`;
+    }
+    if (as === 'card') {
+      return `<button type="button" class="card ${kind}" data-act="level" data-i="${index}"><span class="big">${index + 1}</span><span>${mark}</span></button>`;
+    }
+    return `<button type="button" class="tag ${kind}" data-act="level" data-i="${index}"><span>${index + 1}</span><span>${mark}</span></button>`;
+  }).join('');
+}
+
+function renderDead(extra) {
+  return `<div class="dead ${extra || ''}"><h1>Персонаж погиб</h1><button type="button" data-act="new-game">Новая игра</button></div>`;
+}
+function hudA() {
+  const back = state.country
+    ? `<button type="button" class="back" data-act="back">назад</button>`
+    : `<span></span>`;
+  return `<header class="top hud-still"><div class="cluster">${back}<div class="where">${esc(scaleName())}</div></div><div class="stam hud-still"><b>${state.stock}/${state.cap}</b><span>${esc(moodName(state.stock, state.cap))}</span></div></header>`;
+}
+function renderA() {
+  if (!state.alive) return renderDead();
+  let body = '';
+  if (!state.country) {
+    body = `<div class="grid">${placeButtons(
+      [{ act: 'country', id: 'by', name: 'Беларусь' }, { act: 'country', id: 'ru', name: 'Россия' }],
+      DIM_COUNTRIES
+    )}</div>`;
+  } else if (!state.city) {
+    const country = TREE[state.country];
+    const bright = Object.entries(country.cities).map(([id, city]) => ({ act: 'city', id, name: city.name }));
+    body = `<div class="grid">${placeButtons(bright, country.dim)}</div>`;
+  } else if (!state.street) {
+    const city = TREE[state.country].cities[state.city];
+    const bright = Object.entries(city.streets).map(([id, street]) => ({ act: 'street', id, name: street.name }));
+    body = `<div class="grid">${placeButtons(bright, city.dim)}</div>`;
+  } else if (!state.bar) {
+    const bright = currentStreet().bars.map(([id, name]) => ({ act: 'bar', id, name }));
+    body = `<div class="grid">${placeButtons(bright, [])}</div>`;
+  } else {
+    body = `<div class="list">${levelButtons('row')}</div>`;
+  }
+  return `<div class="screen va">${hudA()}<div class="art ${moodClass()}">${body}</div></div>`;
+}
+
+function spine() {
+  const steps = [
+    ['world', 'Мир', true],
+    ['country', 'Страна', !!state.country],
+    ['city', 'Город', !!state.city],
+    ['street', 'Улица', !!state.street]
+  ];
+  const here = state.street ? 'street' : state.city ? 'city' : state.country ? 'country' : 'world';
+  return `<nav class="spine">${steps.map(([id, label, been]) => {
+    const cls = id === here ? 'on' : been ? 'been' : '';
+    return `<button type="button" class="${cls}" data-act="spine" data-scale="${id}">${label}</button>`;
+  }).join('')}</nav>`;
+}
+function renderB() {
+  if (!state.alive) return renderDead();
+  let main = '';
+  if (!state.country) {
+    main = `<div class="places">${placeButtons(
+      [{ act: 'country', id: 'by', name: 'Беларусь' }, { act: 'country', id: 'ru', name: 'Россия' }],
+      DIM_COUNTRIES
+    )}</div>`;
+  } else if (!state.city) {
+    const country = TREE[state.country];
+    const bright = Object.entries(country.cities).map(([id, city]) => ({ act: 'city', id, name: city.name }));
+    main = `<div class="places">${placeButtons(bright, country.dim)}</div>`;
+  } else if (!state.street) {
+    const city = TREE[state.country].cities[state.city];
+    const bright = Object.entries(city.streets).map(([id, street]) => ({ act: 'street', id, name: street.name }));
+    main = `<div class="places">${placeButtons(bright, city.dim)}</div>`;
+  } else if (!state.bar) {
+    const bright = currentStreet().bars.map(([id, name]) => ({ act: 'bar', id, name }));
+    main = `<div class="places">${placeButtons(bright, [])}</div>`;
+  } else {
+    main = `<div class="film">${levelButtons('card')}</div>`;
+  }
+  const hud = `<div class="hud-strip hud-still"><b>${state.stock}/${state.cap}</b><span>${esc(moodName(state.stock, state.cap))} · ${esc(pathText())}</span></div>`;
+  return `<div class="screen vb">${hud}<div class="body">${spine()}<div class="main"><div class="art ${moodClass()}">${main}</div></div></div></div>`;
+}
+
+function renderC() {
+  if (!state.alive) return renderDead('vc');
+  const title = state.bar ? findBar(state.bar).name : state.street ? currentStreet().name : state.city ? TREE[state.country].cities[state.city].name : state.country ? TREE[state.country].name : 'МИР';
+  let inner = '';
+  if (!state.country) {
+    inner = placeButtons(
+      [{ act: 'country', id: 'by', name: 'Беларусь' }, { act: 'country', id: 'ru', name: 'Россия' }],
+      DIM_COUNTRIES
+    );
+  } else if (!state.city) {
+    const country = TREE[state.country];
+    inner = placeButtons(Object.entries(country.cities).map(([id, city]) => ({ act: 'city', id, name: city.name })), country.dim);
+  } else if (!state.street) {
+    const city = TREE[state.country].cities[state.city];
+    inner = placeButtons(Object.entries(city.streets).map(([id, street]) => ({ act: 'street', id, name: street.name })), city.dim);
+  } else if (!state.bar) {
+    inner = placeButtons(currentStreet().bars.map(([id, name]) => ({ act: 'bar', id, name })), []);
+  } else {
+    inner = levelButtons('tag');
+  }
+  const hang = state.country ? `<button type="button" class="hang" data-act="back">назад к вывеске</button>` : '';
+  return `<div class="screen vc"><div class="marquee">${esc(title)}</div><div class="window art ${moodClass()}"><div class="${state.bar ? 'board' : 'grid'}">${inner}</div></div>${hang}<div class="tube hud-still"><span>${state.stock}/${state.cap}</span><span>${esc(moodName(state.stock, state.cap))}</span></div></div>`;
+}
+
+function render() {
+  const html = variant === 'A' ? renderA() : variant === 'B' ? renderB() : renderC();
+  document.getElementById('phone').innerHTML = html;
+  const life = state.alive ? `${state.stock}/${state.cap} ${moodName(state.stock, state.cap)}` : 'погиб';
+  document.getElementById('state').textContent = `${VARIANT_NAME[variant]}. ${pathText()}. ${life}. ${state.notice}`;
+  document.getElementById('vlabel').textContent = `${variant} (${VARIANT_NAME[variant]})`;
+}
+
+function enterCountry(id) {
+  state.country = id;
+  state.city = state.street = state.bar = null;
+  state.notice = 'Страна открыта. Тусклые города не ведут дальше.';
+}
+function enterCity(id) {
+  state.city = id;
+  state.street = state.bar = null;
+  state.notice = 'Город открыт. Яркая улица ведёт к барам.';
+}
+function enterStreet(id) {
+  state.street = id;
+  state.bar = null;
+  state.notice = 'Улица. Бары идут в порядке вдоль улицы, все доступны сразу.';
+}
+function enterBar(id) {
+  state.bar = id;
+  const bar = findBar(id);
+  state.notice = `${bar.name}: ${bar.levels} уровней. Закрытый не начинается, открытый и пройденный ведут на экран уровня.`;
+}
+function back() {
+  if (state.bar) state.bar = null;
+  else if (state.street) state.street = null;
+  else if (state.city) state.city = null;
+  else if (state.country) state.country = null;
+  state.notice = 'Шаг назад по масштабам.';
+}
+function spineTo(scale) {
+  if (scale === 'world') goWorld();
+  else if (scale === 'country' && state.country) { state.city = state.street = state.bar = null; }
+  else if (scale === 'city' && state.city) { state.street = state.bar = null; }
+  else if (scale === 'street' && state.street) { state.bar = null; }
+  else {
+    state.notice = 'Этот масштаб ещё не выбран.';
+    return;
+  }
+  state.notice = 'Лента переключила масштаб, не шагом назад.';
+}
+function tapLevel(index) {
+  const bar = findBar(state.bar);
+  const row = starsOf(bar);
+  const kind = levelKind(row, index);
+  if (kind === 'locked') {
+    state.notice = `Уровень ${index + 1} закрыт. Его откроет победа в предыдущем.`;
+    return;
+  }
+  const stars = kind === 'cleared' ? `, лучший результат ${row[index]}` : ', ещё без звёзд';
+  state.notice = `Уровень ${index + 1} ${kind === 'open' ? 'открыт' : 'пройден'}${stars}. Отсюда начался бы экран уровня.`;
+}
+function setMood(stock, cap) {
+  if (!state.alive) {
+    state.notice = 'Погибшая игра не продолжается. Живым делает только «Новая игра».';
+    return;
+  }
+  state.stock = stock;
+  state.cap = cap;
+  state.notice = `Индикатор ${stock}/${cap}, состояние «${moodName(stock, cap)}».`;
+}
+function preset(name) {
+  if (name === 'dead') {
+    state.alive = false;
+    state.stock = 0;
+    state.notice = 'Сохранённая гибель. На экране только «Новая игра».';
+    return;
+  }
+  if (name === 'fresh') {
+    newGame();
+    state.notice = 'Прототип сбросил прогресс, как новая игра, и открыл мир.';
+    return;
+  }
+  state.alive = true;
+  resetProgress();
+  if (name === 'mid') {
+    state.stock = 40;
+    state.cap = 120;
+    state.stars.under = [3, 2, 1, null, null, null, null, null];
+    state.stars.zojka = [3, 3, 2, 2, 1, 1].concat(blank(14));
+    state.country = 'by';
+    state.city = 'minsk';
+    state.street = 'zybitskaya';
+    state.bar = 'under';
+    state.notice = 'Under: 3, 2 и 1 звезда, четвёртый открыт, остальные закрыты. Запас 40/120, «Пьян».';
+    return;
+  }
+  state.stock = 123;
+  state.cap = 123;
+  state.stars.under = [3, 3, 3, 3, 3, 3, 3, 3];
+  state.country = 'by';
+  state.city = 'minsk';
+  state.street = 'zybitskaya';
+  state.bar = 'under';
+  state.notice = 'Under пройден на три звезды каждый. Награда 3 уже в потолке: 123/123, «Трезв».';
+}
+
+function onAct(el) {
+  const act = el.dataset.act;
+  if (act === 'new-game') newGame();
+  else if (act === 'dim') state.notice = `«${el.dataset.name}» тусклая. Тап не открывает масштаб.`;
+  else if (act === 'country') enterCountry(el.dataset.id);
+  else if (act === 'city') enterCity(el.dataset.id);
+  else if (act === 'street') enterStreet(el.dataset.id);
+  else if (act === 'bar') enterBar(el.dataset.id);
+  else if (act === 'back') back();
+  else if (act === 'spine') spineTo(el.dataset.scale);
+  else if (act === 'level') tapLevel(Number(el.dataset.i));
+  render();
+}
+
+function setVariant(next) {
+  variant = next;
+  const url = new URL(location.href);
+  url.searchParams.set('variant', next);
+  history.replaceState(null, '', url);
+  state.notice = `Вариант ${next}: ${VARIANT_NAME[next]}. Место и прогресс те же.`;
+  render();
+}
+function cycle(step) {
+  const i = VARIANTS.indexOf(variant);
+  setVariant(VARIANTS[(i + step + VARIANTS.length) % VARIANTS.length]);
+}
+
+document.getElementById('phone').addEventListener('click', (e) => {
+  const el = e.target.closest('[data-act]');
+  if (el) onAct(el);
+});
+document.getElementById('chrome').addEventListener('click', (e) => {
+  const el = e.target.closest('button');
+  if (!el) return;
+  if (el.dataset.preset) preset(el.dataset.preset);
+  if (el.dataset.mood) {
+    const [stock, cap] = el.dataset.mood.split(',').map(Number);
+    setMood(stock, cap);
+  }
+  render();
+});
+document.getElementById('prev').addEventListener('click', () => cycle(-1));
+document.getElementById('next').addEventListener('click', () => cycle(1));
+document.addEventListener('keydown', (e) => {
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  if (e.key === 'ArrowRight') cycle(1);
+  if (e.key === 'ArrowLeft') cycle(-1);
+});
+
+const params = new URLSearchParams(location.search);
+const initial = params.get('variant');
+if (initial === 'B' || initial === 'C') variant = initial;
+const initialPreset = params.get('preset');
+if (initialPreset) preset(initialPreset);
+const mood = params.get('mood');
+if (mood && mood.includes(',')) {
+  const [stock, cap] = mood.split(',').map(Number);
+  setMood(stock, cap);
+}
+render();
+</script>
+</body>
+</html>
