@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues живут в GitHub Issues репозитория `bndby/by.bnd.alconavt`. См. `docs/agents/issue-tracker.md`.
+Issues живут как markdown-файлы в `.scratch/<feature>/`. См. `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
