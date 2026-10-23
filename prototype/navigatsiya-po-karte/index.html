@@ -6,8 +6,9 @@
 <title>Прототип: навигация по карте</title>
 <!--
   PROTOTYPE, not production.
-  Question: how the path мир → страна → город → улица → список уровней feels,
-  and how a locked level, an open level, and a cleared level with stars differ.
+  Question: how the path мир → город → улица → список уровней feels
+    when the world is only the part that holds the city set,
+    and how a locked level, an open level, and a cleared level with stars differ.
   Three variants via ?variant=A|B|C.
 -->
 <style>
@@ -56,6 +57,9 @@
   .mapsvg text { font-family: "Courier New", ui-monospace, monospace; pointer-events: none; }
   .mapsvg .bright { fill: #10262a; stroke: var(--cyan); cursor: pointer; }
   .mapsvg .dim { fill: #18161e; stroke: #3c3846; cursor: pointer; }
+  .mapsvg .later { fill: #14121a; stroke: #3a3844; cursor: pointer; }
+  .mapsvg .ghost { fill: #121016; stroke: #322f3a; stroke-width: 0.28; pointer-events: none; }
+  .mapsvg .quiet { fill: #1a1822; stroke: #3a3846; stroke-width: 0.4; pointer-events: none; }
   .mapsvg .water { fill: #142028; stroke: #3d5c66; }
   .mapsvg .mark { stroke-width: 0.4; }
   .mapsvg .road { fill: none; stroke-linecap: round; }
@@ -271,7 +275,7 @@
 </style>
 </head>
 <body>
-  <p class="ask">Вопрос тикета «Навигация по карте»: путь <strong>мир → страна → город → улица → список уровней</strong>. Страну, город и бар на улице выбирают на контуре, не в списке. Список остаётся только у уровней. Панель внизу — оболочка прототипа, не экран игры.</p>
+  <p class="ask">Вопрос тикета «Навигация по карте»: путь <strong>мир → город → улица → список уровней</strong>. Страны отдельным шагом нет: на мире только часть с городами набора. Город и бар выбирают на контуре. Список остаётся только у уровней. Панель внизу — оболочка прототипа, не экран игры.</p>
   <div class="phone" id="phone"></div>
   <p class="state" id="state"></p>
   <div class="chrome" id="chrome">
@@ -320,7 +324,6 @@ const TREE = {
             ]
           }
         },
-        dim: ['Немига', 'Интернациональная']
       },
       vitebsk: {
         name: 'Витебск',
@@ -334,11 +337,9 @@ const TREE = {
               ['apteka', 'Аптека бар', 20]
             ]
           }
-        },
-        dim: ['Ленина']
+        }
       }
-    },
-    dim: ['Гомель', 'Брест']
+    }
   },
   ru: {
     name: 'Россия',
@@ -354,14 +355,11 @@ const TREE = {
               ['zojka', 'Зойка', 20]
             ]
           }
-        },
-        dim: ['Арбат']
+        }
       }
-    },
-    dim: ['Санкт-Петербург', 'Смоленск']
+    }
   }
 };
-const DIM_COUNTRIES = ['Польша', 'Украина', 'Латвия'];
 
 const state = {
   country: null,
@@ -372,7 +370,7 @@ const state = {
   stock: 120,
   cap: 120,
   stars: {},
-  notice: 'Контур мира. Тап по стране открывает её. Три города кучно у левого края.'
+  notice: 'Часть мира с городами набора. Тап по яркой точке открывает город.'
 };
 
 let variant = 'A';
@@ -432,12 +430,29 @@ function scaleName() {
   if (state.bar) return 'список уровней';
   if (state.street) return 'улица';
   if (state.city) return 'город';
-  if (state.country) return 'страна';
   return 'мир';
+}
+function cityOf(id) {
+  for (const [countryId, country] of Object.entries(TREE)) {
+    if (country.cities[id]) return { countryId, city: country.cities[id] };
+  }
+  return null;
+}
+function cityScore(id) {
+  const found = cityOf(id);
+  let got = 0;
+  let total = 0;
+  for (const street of Object.values(found.city.streets)) {
+    for (const [bid, , levels] of street.bars) {
+      total += levels * 3;
+      const row = state.stars[bid];
+      if (row) got += row.reduce((sum, n) => sum + (n || 0), 0);
+    }
+  }
+  return `${got}/${total}`;
 }
 function pathText() {
   const bits = ['Мир'];
-  if (state.country) bits.push(TREE[state.country].name);
   if (state.city) bits.push(TREE[state.country].cities[state.city].name);
   if (state.street) bits.push(currentStreet().name);
   if (state.bar) bits.push(findBar(state.bar).name);
@@ -454,104 +469,82 @@ function project(frame, lon, lat, width, height) {
   const y = (frame.north - lat) / (frame.north - frame.south) * height;
   return [Number(x.toFixed(1)), Number(y.toFixed(1))];
 }
-const WORLD_FRAME = { west: 19.604, east: 190.271, south: 41.199, north: 81.854 };
-function wp(lon, lat) { return project(WORLD_FRAME, lon, lat, 210, 100); }
+const REGION_FRAME = { west: 21.6, east: 40.8, south: 50.2, north: 61.15 };
+const REGION_VB = [100, 100.5];
+function rp(lon, lat) { return project(REGION_FRAME, lon, lat, REGION_VB[0], REGION_VB[1]); }
+function sheet(points, cls) {
+  return `<polygon points="${pts(points)}" class="${cls}" />`;
+}
 function land(points, cls, act, id, name) {
   const idAttr = id ? ` data-id="${esc(id)}"` : '';
   const nameAttr = name ? ` data-name="${esc(name)}"` : '';
   return `<polygon points="${pts(points)}" class="${cls}" data-act="${act}"${idAttr}${nameAttr} />`;
 }
-function dot(x, y, r, cls, act, id, name) {
+function ring(coords) {
+  return coords.map(([lon, lat]) => rp(lon, lat));
+}
+function regionCity(lon, lat, name, kind, act, id, score, place) {
+  const [x, y] = rp(lon, lat);
+  const bright = kind === 'bright';
+  let tx = x;
+  let ty = y - 3.1;
+  let anchor = 'middle';
+  if (place === 'below') ty = y + 4.6;
+  if (place === 'left') { tx = x - 2.4; ty = y + 1.2; anchor = 'end'; }
+  if (place === 'right') { tx = x + 2.4; ty = y + 1.2; anchor = 'start'; }
+  const sx = place === 'left' || place === 'right' ? tx : x;
+  const sy = place === 'below' ? y + 7.6 : y + 4.8;
+  const fill = bright ? '#79f6ff' : '#5c5868';
   const idAttr = id ? ` data-id="${esc(id)}"` : '';
-  return `<g data-act="${act}"${idAttr} data-name="${esc(name)}"><circle cx="${x}" cy="${y}" r="${r}" class="${cls} mark" /><text x="${x + r + 0.6}" y="${y + 1.2}" fill="${cls === 'dim' ? '#6d6878' : '#79f6ff'}" font-size="3.4">${esc(name)}</text></g>`;
+  const scoreSvg = score
+    ? `<text x="${sx.toFixed(1)}" y="${sy.toFixed(1)}" text-anchor="${anchor}" fill="#ffe56a" font-size="2.7">${esc(score)}</text>`
+    : '';
+  return `<g data-act="${act}"${idAttr} data-name="${esc(name)}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.4" fill="transparent" /><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${bright ? 1.7 : 1.0}" class="${bright ? 'bright' : 'later'} mark" /><text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="${anchor}" fill="${fill}" font-size="3.5">${esc(name)}</text>${scoreSvg}</g>`;
 }
-function worldMap() {
-  const russia = [
-    [32.0, 52.2], [28.5, 56.0], [27.35, 57.53], [29.0, 64.0], [31.985, 69.954],
-    [40.0, 67.0], [48.0, 67.5], [60.0, 65.5], [80.0, 68.0], [104.185, 77.731],
-    [130.0, 72.0], [160.0, 70.0], [175.0, 69.5], [180.0, 66.0], [172.0, 64.0],
-    [163.0, 60.0], [156.748, 50.969], [159.0, 56.0], [162.5, 59.5], [150.0, 59.0],
-    [142.0, 47.0], [132.0, 43.0], [115.0, 50.0], [95.0, 50.0], [80.0, 51.0],
-    [68.0, 54.0], [54.0, 51.0], [47.791, 41.199], [39.874, 43.473], [36.628, 45.151],
-    [38.5, 47.5], [34.0, 51.0], [32.0, 52.2]
-  ].map(([lon, lat]) => wp(lon, lat));
-  const belarus = [
+function regionMap() {
+  const belarus = ring([
     [23.175, 52.287], [23.605, 51.518], [30.545, 51.265], [31.763, 52.101],
     [32.710, 53.371], [30.456, 55.787], [28.118, 56.146], [26.594, 55.668]
-  ].map(([lon, lat]) => wp(lon, lat));
-  const pieces = [
-    [[180.2, 65.2], [190.0, 65.4], [189.5, 67.6], [180.2, 67.2]],
-    [[141.7, 45.9], [144.7, 45.9], [144.7, 54.4], [141.7, 54.4]],
-    [[19.64, 54.35], [22.83, 54.35], [22.83, 55.29], [19.64, 55.29]],
-    [[32.6, 44.4], [36.5, 44.5], [36.2, 46.2], [32.8, 46.1]],
-    [[58.6, 74.4], [62.2, 74.2], [62.4, 76.2], [58.8, 76.3]],
-    [[53.2, 71.2], [55.6, 71.1], [55.7, 72.8], [53.3, 72.9]]
-  ].map((ring) => ring.map(([lon, lat]) => wp(lon, lat)));
-  const dim = [
-    ['Польша', [[19.7, 51.3], [23.1, 51.3], [23.1, 54.2], [19.7, 54.2]]],
-    ['Украина', [[24.0, 46.2], [40.0, 46.2], [40.0, 51.2], [24.0, 51.2]]],
-    ['Латвия', [[24.0, 56.2], [28.2, 56.2], [28.2, 57.8], [24.0, 57.8]]],
-    ['Финляндия', [[22.0, 60.2], [30.0, 60.2], [29.0, 68.5], [22.0, 68.0]]]
+  ]);
+  const poland = ring([[21.6, 51.9], [23.175, 52.287], [24.91, 54.0], [21.6, 54.0]]);
+  const lithuania = ring([[21.6, 54.0], [24.91, 54.0], [26.594, 55.668], [25.2, 56.05], [21.6, 56.05]]);
+  const latvia = ring([[21.6, 56.05], [25.2, 56.05], [26.594, 55.668], [28.118, 56.146], [27.6, 57.6], [21.6, 57.6]]);
+  const estonia = ring([[21.6, 57.6], [27.6, 57.6], [28.2, 59.5], [21.6, 59.5]]);
+  const ukraine = ring([[21.6, 50.2], [34.2, 50.2], [31.763, 52.101], [30.545, 51.265], [23.605, 51.518], [23.175, 52.287], [21.6, 51.9]]);
+  const label = (lon, lat, name) => {
+    const [x, y] = rp(lon, lat);
+    return `<text x="${x}" y="${y}" fill="#3e3c48" font-size="2.3">${name}</text>`;
+  };
+  const playable = [
+    ['minsk', 'Минск', 27.562, 53.902, 'above'],
+    ['vitebsk', 'Витебск', 30.207, 55.193, 'above'],
+    ['moscow', 'Москва', 37.617, 55.751, 'above']
   ];
-  const cities = [
-    [27.562, 53.902, 'Минск'],
-    [30.207, 55.193, 'Витебск'],
-    [37.617, 55.751, 'Москва']
-  ];
-  const body = [
-    ...dim.map(([name, ring]) => land(ring.map(([lon, lat]) => wp(lon, lat)), 'dim', 'dim', '', name)),
-    land(russia, 'bright', 'country', 'ru', ''),
-    ...pieces.map((ring) => land(ring, 'bright', 'country', 'ru', '')),
-    land(belarus, 'bright', 'country', 'by', ''),
-    ...cities.map(([lon, lat, name]) => {
-      const [x, y] = wp(lon, lat);
-      return `<circle cx="${x}" cy="${y}" r="1.1" fill="#ffe56a" pointer-events="none" /><text x="${x + 1.4}" y="${y - 1.2}" fill="#ffe56a" font-size="3.2">${name}</text>`;
-    }),
-    `<text x="108" y="46" fill="#79f6ff" font-size="7">Россия</text>`,
-    `<text x="4" y="70" fill="#79f6ff" font-size="3.3">Беларусь</text>`
-  ].join('');
-  return `<svg class="mapsvg" viewBox="0 0 210 100">${body}</svg>`;
-}
-const BY_FRAME = { west: 23.175, east: 32.710, south: 51.265, north: 56.146 };
-function bp(lon, lat) { return project(BY_FRAME, lon, lat, 100, 86); }
-function belarusMap() {
-  const hull = [
-    [23.175, 52.287], [23.605, 51.518], [30.545, 51.265], [31.763, 52.101],
-    [32.710, 53.371], [30.456, 55.787], [28.118, 56.146], [26.594, 55.668]
-  ].map(([lon, lat]) => bp(lon, lat));
-  const cities = [
-    ['minsk', 'Минск', 27.562, 53.902, 'bright'],
-    ['vitebsk', 'Витебск', 30.207, 55.193, 'bright'],
-    ['', 'Брест', 24.60, 52.25, 'dim'],
-    ['', 'Гомель', 31.00, 52.42, 'dim']
-  ];
-  const body = land(hull, 'dim', 'dim', '', 'контур') + cities.map(([id, name, lon, lat, cls]) => {
-    const [x, y] = bp(lon, lat);
-    const act = cls === 'bright' ? 'city' : 'dim';
-    return dot(x, y, 2.4, cls, act, id, name);
-  }).join('');
-  return `<svg class="mapsvg" viewBox="0 0 100 86">${body}</svg>`;
-}
-function russiaMap() {
-  const moscow = wp(37.617, 55.751);
-  const dimCities = [
-    ['Санкт-Петербург', 30.31, 59.93],
-    ['Смоленск', 32.05, 54.78]
+  const later = [
+    ['Могилёв', 30.345, 53.917, 'right'],
+    ['Гомель', 30.975, 52.434, 'below'],
+    ['Смоленск', 32.045, 54.783, 'right'],
+    ['Ленинград', 30.314, 59.939, 'below']
   ];
   const body = [
-    land([
-      [32.0, 52.2], [28.5, 56.0], [27.35, 57.53], [29.0, 64.0], [31.985, 69.954],
-      [40.0, 67.0], [60.0, 65.5], [104.185, 77.731], [160.0, 70.0], [180.0, 66.0],
-      [163.0, 60.0], [156.748, 50.969], [150.0, 59.0], [132.0, 43.0], [80.0, 51.0],
-      [47.791, 41.199], [36.628, 45.151], [32.0, 52.2]
-    ].map(([lon, lat]) => wp(lon, lat)), 'dim', 'dim', '', 'контур'),
-    dot(moscow[0], moscow[1], 2.2, 'bright', 'city', 'moscow', 'Москва'),
-    ...dimCities.map(([name, lon, lat]) => {
-      const [x, y] = wp(lon, lat);
-      return dot(x, y, 1.6, 'dim', 'dim', '', name);
-    })
+    sheet(ring([[21.6, 50.2], [40.8, 50.2], [40.8, 61.15], [21.6, 61.15]]), 'quiet'),
+    sheet(poland, 'ghost'),
+    sheet(lithuania, 'ghost'),
+    sheet(latvia, 'ghost'),
+    sheet(estonia, 'ghost'),
+    sheet(ukraine, 'ghost'),
+    sheet(belarus, 'quiet'),
+    label(22.4, 53.0, 'Польша'),
+    label(22.5, 55.0, 'Литва'),
+    label(23.0, 56.9, 'Латвия'),
+    label(23.4, 58.5, 'Эстония'),
+    label(26.0, 50.85, 'Украина'),
+    label(24.7, 55.2, 'Беларусь'),
+    label(36.4, 58.6, 'Россия'),
+    ...later.map(([name, lon, lat, place]) => regionCity(lon, lat, name, 'later', 'later', '', '', place)),
+    ...playable.map(([id, name, lon, lat, place]) => regionCity(lon, lat, name, 'bright', 'city', id, cityScore(id), place))
   ].join('');
-  return `<svg class="mapsvg" viewBox="0 0 210 100">${body}</svg>`;
+  return `<svg class="mapsvg" viewBox="0 0 ${REGION_VB[0]} ${REGION_VB[1]}">${body}</svg>`;
 }
 function cityMap(id) {
   if (id === 'minsk') {
@@ -612,8 +605,7 @@ function streetMap(id) {
 }
 function mapArt() {
   if (state.bar) return '';
-  if (!state.country) return worldMap();
-  if (!state.city) return state.country === 'by' ? belarusMap() : russiaMap();
+  if (!state.city) return regionMap();
   if (!state.street) return cityMap(state.city);
   return streetMap(state.street);
 }
@@ -637,7 +629,7 @@ function renderDead(extra) {
   return `<div class="dead ${extra || ''}"><h1>Персонаж погиб</h1><button type="button" data-act="new-game">Новая игра</button></div>`;
 }
 function hudA() {
-  const back = state.country
+  const back = state.city
     ? `<button type="button" class="back" data-act="back">назад</button>`
     : `<span></span>`;
   return `<header class="top hud-still"><div class="cluster">${back}<div class="where">${esc(scaleName())}</div></div><div class="stam hud-still"><b>${state.stock}/${state.cap}</b><span>${esc(moodName(state.stock, state.cap))}</span></div></header>`;
@@ -651,11 +643,10 @@ function renderA() {
 function spine() {
   const steps = [
     ['world', 'Мир', true],
-    ['country', 'Страна', !!state.country],
     ['city', 'Город', !!state.city],
     ['street', 'Улица', !!state.street]
   ];
-  const here = state.street ? 'street' : state.city ? 'city' : state.country ? 'country' : 'world';
+  const here = state.street ? 'street' : state.city ? 'city' : 'world';
   return `<nav class="spine">${steps.map(([id, label, been]) => {
     const cls = id === here ? 'on' : been ? 'been' : '';
     return `<button type="button" class="${cls}" data-act="spine" data-scale="${id}">${label}</button>`;
@@ -670,9 +661,9 @@ function renderB() {
 
 function renderC() {
   if (!state.alive) return renderDead('vc');
-  const title = state.bar ? findBar(state.bar).name : state.street ? currentStreet().name : state.city ? TREE[state.country].cities[state.city].name : state.country ? TREE[state.country].name : 'МИР';
+  const title = state.bar ? findBar(state.bar).name : state.street ? currentStreet().name : state.city ? TREE[state.country].cities[state.city].name : 'МИР';
   const inner = state.bar ? `<div class="board">${levelButtons('tag')}</div>` : mapArt();
-  const hang = state.country ? `<button type="button" class="hang" data-act="back">назад к вывеске</button>` : '';
+  const hang = state.city ? `<button type="button" class="hang" data-act="back">назад к вывеске</button>` : '';
   return `<div class="screen vc"><div class="marquee">${esc(title)}</div><div class="window art ${moodClass()}"><div class="${state.bar ? 'board' : 'grid'}">${inner}</div></div>${hang}<div class="tube hud-still"><span>${state.stock}/${state.cap}</span><span>${esc(moodName(state.stock, state.cap))}</span></div></div>`;
 }
 
@@ -684,12 +675,9 @@ function render() {
   document.getElementById('vlabel').textContent = `${variant} (${VARIANT_NAME[variant]})`;
 }
 
-function enterCountry(id) {
-  state.country = id;
-  state.city = state.street = state.bar = null;
-  state.notice = 'Контур страны. Яркий город открывается, тусклый остаётся на силуэте.';
-}
 function enterCity(id) {
+  const found = cityOf(id);
+  state.country = found.countryId;
   state.city = id;
   state.street = state.bar = null;
   state.notice = 'Контур города. Яркая улица — штрих на силуэте.';
@@ -707,13 +695,11 @@ function enterBar(id) {
 function back() {
   if (state.bar) state.bar = null;
   else if (state.street) state.street = null;
-  else if (state.city) state.city = null;
-  else if (state.country) state.country = null;
+  else if (state.city) goWorld();
   state.notice = 'Шаг назад по масштабам.';
 }
 function spineTo(scale) {
   if (scale === 'world') goWorld();
-  else if (scale === 'country' && state.country) { state.city = state.street = state.bar = null; }
   else if (scale === 'city' && state.city) { state.street = state.bar = null; }
   else if (scale === 'street' && state.street) { state.bar = null; }
   else {
@@ -782,7 +768,7 @@ function onAct(el) {
   const act = el.dataset.act;
   if (act === 'new-game') newGame();
   else if (act === 'dim') state.notice = `«${el.dataset.name}» тусклая. Тап не открывает масштаб.`;
-  else if (act === 'country') enterCountry(el.dataset.id);
+  else if (act === 'later') state.notice = `«${el.dataset.name}» пока без уровней. Сюда добавим их позже.`;
   else if (act === 'city') enterCity(el.dataset.id);
   else if (act === 'street') enterStreet(el.dataset.id);
   else if (act === 'bar') enterBar(el.dataset.id);
@@ -835,8 +821,7 @@ const initialPreset = params.get('preset');
 if (initialPreset) preset(initialPreset);
 const screen = params.get('screen');
 const screens = {
-  by: () => { state.country = 'by'; },
-  ru: () => { state.country = 'ru'; },
+  world: () => { goWorld(); },
   minsk: () => { state.country = 'by'; state.city = 'minsk'; },
   vitebsk: () => { state.country = 'by'; state.city = 'vitebsk'; },
   moscow: () => { state.country = 'ru'; state.city = 'moscow'; },
