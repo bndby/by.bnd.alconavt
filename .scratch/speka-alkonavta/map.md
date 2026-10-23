@@ -37,7 +37,7 @@ GitHub: https://github.com/bndby/by.bnd.alconavt/issues/1
 - [Карточки девяти напитков](issues/14-kartochki-devyati-napitkov.md): у восьми напитков есть фото бутылки производителя, в игру его не брать; у Guinness Draught фото бутылки на сайте дома нет. Ветка research/drink-cards, файл docs/research/drink-cards.md
 
 - [Силуэты стран, городов и улиц](issues/13-siluety-stran-gorodov-i-ulits.md): На мире три города слипаются у западного края России, Зыбицкая идёт на северо-запад, Суворова почти на север, Патрики — ромб четырёх улиц вокруг пруда. Ветка research/map-geometry, файл docs/research/map-geometry.md
-- [Трата и восстановление выносливости](issues/01-trata-i-vosstanovlenie-vynoslivosti.md): запас 120, с первой сборки бутылки списывается 1, 2 или 3, ноль сразу закрывает уровень, единица возвращается за 5 минут.
+- [Трата и восстановление выносливости](issues/01-trata-i-vosstanovlenie-vynoslivosti.md): стартовый запас 120, с первой сборки бутылки списывается 1, 2 или 3, ноль сразу закрывает уровень, единица возвращается за 5 минут до текущего максимума.
 
 ## Not yet specified
 
