@@ -1,7 +1,7 @@
 # Навигация по карте
 
 Type: prototype
-Status: open
+Status: claimed
 GitHub: https://github.com/bndby/by.bnd.alconavt/issues/10
 
 ## Question
