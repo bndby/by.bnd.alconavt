@@ -1,7 +1,7 @@
 # Звёзды уровня и выносливость за бар
 
 Type: grilling
-Status: open
+Status: claimed
 GitHub: https://github.com/bndby/by.bnd.alconavt/issues/3
 
 ## Question
