@@ -1,7 +1,7 @@
 # Картинка на карточке напитка
 
 Type: grilling
-Status: open
+Status: claimed
 GitHub: https://github.com/bndby/by.bnd.alconavt/issues/16
 
 ## Question
