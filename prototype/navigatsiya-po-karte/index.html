@@ -6,10 +6,8 @@
 <title>Прототип: навигация по карте</title>
 <!--
   PROTOTYPE, not production.
-  Question: how the path мир → город → улица → список уровней feels
-    when the world is only the part that holds the city set,
-    and how a locked level, an open level, and a cleared level with stars differ.
-  Three variants via ?variant=A|B|C.
+  Accepted variant: B, лента пути. A and C stay on the switcher as the rejected takes.
+  Path: мир → город → улица → плёнка уровней. No country step.
 -->
 <style>
   :root {
@@ -275,7 +273,7 @@
 </style>
 </head>
 <body>
-  <p class="ask">Вопрос тикета «Навигация по карте»: путь <strong>мир → город → улица → список уровней</strong>. Страны отдельным шагом нет: на мире только часть с городами набора. Город и бар выбирают на контуре. Список остаётся только у уровней. Панель внизу — оболочка прототипа, не экран игры.</p>
+  <p class="ask">Принят вариант <strong>B, лента пути</strong>: слева мир, город и улица, уровни — плёнкой карточек. A и C оставлены на переключателе как отклонённые. Панель внизу — оболочка прототипа, не экран игры.</p>
   <div class="phone" id="phone"></div>
   <p class="state" id="state"></p>
   <div class="chrome" id="chrome">
@@ -373,7 +371,7 @@ const state = {
   notice: 'Часть мира с городами набора. Тап по яркой точке открывает город.'
 };
 
-let variant = 'A';
+let variant = 'B';
 
 function esc(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -816,7 +814,7 @@ document.addEventListener('keydown', (e) => {
 
 const params = new URLSearchParams(location.search);
 const initial = params.get('variant');
-if (initial === 'B' || initial === 'C') variant = initial;
+if (initial === 'A' || initial === 'B' || initial === 'C') variant = initial;
 const initialPreset = params.get('preset');
 if (initialPreset) preset(initialPreset);
 const screen = params.get('screen');
