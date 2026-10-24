@@ -44,6 +44,7 @@ GitHub: https://github.com/bndby/by.bnd.alconavt/issues/1
 - [Навигация по карте](issues/09-navigatsiya-po-karte.md): карта на весь экран, назад на одну ступень, уровни плёнкой; мир — кроп с точками городов и дробью звёзд. Ветка cursor/navigatsiya-po-karte-c7ab, файл prototype/navigatsiya-po-karte/index.html
 - [Масштаб мира и читаемость трёх городов](issues/16-masshtab-mira-i-chitaemost-treh-gorodov.md): снято тем же кропом, города не раздвигаются и дальние куски России на мир не входят.
 - [Экран уровня](issues/10-ekran-urovnya.md): бутылки стоят на прилавке, перелив двумя тапами, имя собранной бутылки под ней. Ветка cursor/ekran-urovnya-7a8a, файл prototype/ekran-urovnya/index.html
+- [Картинка на карточке напитка](issues/15-kartinka-na-kartochke-napitka.md): у всех девяти напитков пиксельный рисунок бутылки с уровня, залитый цветом до вместимости; одна форма, без знаков производителя.
 
 ## Not yet specified
 
