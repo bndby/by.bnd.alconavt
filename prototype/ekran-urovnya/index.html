@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Прототип: экран уровня</title>
+<!--
+  PROTOTYPE, not production. Throwaway.
+  Accepted: Прилавок. Бутылки стоят, перелив двумя тапами.
+  B and C stay on the switcher as rejected takes.
+  Нижняя панель в игру не входит.
+-->
+<style>
+  :root {
+    --bg: #100e14;
+    --ink: #f6f1e8;
+    --dim: #6d6878;
+    --cyan: #79f6ff;
+    --pink: #ff5ad4;
+    --gold: #ffe56a;
+    --line: #3a3544;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: #1a1720;
+    color: var(--ink);
+    font-family: "Courier New", ui-monospace, monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 16px 168px;
+  }
+  .ask { max-width: 640px; margin: 0; line-height: 1.45; font-size: 14px; }
+  .ask strong { color: var(--cyan); }
+  .phone {
+    width: 390px;
+    height: 760px;
+    background: var(--bg);
+    border: 10px solid #0a090d;
+    border-radius: 28px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 20px 60px #000a;
+  }
+  .screen { height: 100%; position: relative; overflow: hidden; }
+  .art {
+    position: absolute;
+    inset: -28px;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 50% 120%, #2a1830 0%, transparent 55%),
+      #100e14;
+  }
+  .sign {
+    position: absolute;
+    color: var(--pink);
+    letter-spacing: 0.18em;
+    text-shadow: 0 0 10px var(--pink);
+    font-size: 22px;
+    animation: pulse 2.6s ease-in-out infinite;
+  }
+  .art.tipsy .sign { animation-duration: 1.8s; }
+  .art.drunk .sign { animation-duration: 1.05s; }
+  .art.wasted .sign { animation-duration: 0.55s; }
+  .art.tipsy { animation: sway 3.6s ease-in-out infinite; }
+  .art.drunk { animation: sway 2s ease-in-out infinite; }
+  .art.wasted { animation: sway-hard 0.9s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.45; filter: brightness(1.5); } }
+  @keyframes sway { 50% { transform: rotate(1.4deg) translateY(3px); } }
+  @keyframes sway-hard { 50% { transform: rotate(2.8deg) translateY(6px); } }
+  .play, .cover {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    animation: none !important;
+  }
+  .play *, .cover * { animation: none !important; }
+  button, .bottle, .tube {
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    border: 2px solid var(--line);
+    cursor: pointer;
+  }
+  .hud, .foot, .hand, .plate-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 12px 8px;
+  }
+  .where { flex: 1; min-width: 0; font-size: 13px; letter-spacing: 0.04em; line-height: 1.25; }
+  .stam { flex: 0 0 auto; text-align: right; line-height: 1.15; }
+  .stam b { display: block; font-size: 22px; color: var(--gold); }
+  .stam span, .mood { color: var(--pink); font-size: 13px; }
+  .back, .undo, .card-close, .go {
+    border-color: var(--pink);
+    color: var(--pink);
+    padding: 8px 10px;
+  }
+  button:disabled, .undo.off {
+    opacity: 0.35;
+    cursor: default;
+    color: var(--dim);
+    border-color: var(--line);
+  }
+  .hint { color: var(--dim); font-size: 12px; padding: 0 12px 8px; min-height: 18px; }
+  .rack { flex: 1; min-height: 0; padding: 8px 10px 12px; overflow: auto; }
+  .hud, .foot, .hint, .banner, .hand, .thermo { flex-shrink: 0; }
+  .cell { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+  .bottle, .tube {
+    position: relative;
+    background: #16141c;
+    border-color: #6a6478;
+    padding: 5px;
+    display: flex;
+    flex-direction: column;
+  }
+  .bottle.sel, .tube.sel { border-color: var(--cyan); box-shadow: 0 0 0 2px var(--cyan); }
+  .bottle.done, .tube.done { border-color: var(--gold); }
+  .bottle.no, .tube.no { opacity: 0.38; }
+  .slots { display: flex; gap: 3px; }
+  .slots.col { flex-direction: column; justify-content: flex-start; width: 100%; }
+  .slots.row { flex-direction: row; align-items: stretch; width: 100%; }
+  .slot { display: block; flex: 0 0 auto; }
+  .slots.col .slot { width: 100%; height: var(--seg); }
+  .slots.row .slot { width: var(--seg); height: 28px; }
+  .slot.empty { box-shadow: inset 0 0 0 2px #3a3544; }
+  .slot.fill { box-shadow: inset 0 0 0 2px rgba(255,255,255,.28); }
+  .name, .plate {
+    min-height: 28px;
+    font-size: 11px;
+    line-height: 1.15;
+    text-align: center;
+    color: var(--gold);
+    border-color: var(--gold);
+    padding: 3px 4px;
+    max-width: 100%;
+  }
+  .name.quiet, .plate.quiet {
+    border-color: transparent;
+    color: transparent;
+  }
+  .moves { color: var(--cyan); font-size: 18px; }
+  .moves small { display: block; color: var(--dim); font-size: 11px; }
+
+  .va .rack { display: flex; align-items: flex-end; justify-content: center; }
+  .va .grid {
+    width: 100%;
+    display: grid;
+    gap: 8px;
+    align-items: end;
+  }
+  .va .bottle { width: 100%; height: calc(var(--seg) * var(--cap) + (var(--cap) - 1) * 3px + 10px); }
+  .art-a .sign { top: 158px; left: 48px; font-size: 28px; }
+
+  .art-b .sign { top: 168px; right: 36px; font-size: 22px; }
+  .vb .body { flex: 1; min-height: 0; display: flex; }
+  .vb .thermo {
+    width: 54px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0 12px;
+    color: var(--gold);
+    font-size: 12px;
+  }
+  .vb .thermo b { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 16px; letter-spacing: 0.08em; }
+  .vb .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .vb .hand {
+    margin: 8px 10px 0;
+    min-height: 92px;
+    border: 2px dashed var(--cyan);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    color: var(--cyan);
+  }
+  .vb .hand .slots.row .slot { height: 36px; }
+  .vb .rack { display: flex; align-items: end; }
+  .vb .grid { width: 100%; display: grid; gap: 6px; align-items: end; }
+  .vb .bottle { width: 100%; height: calc(var(--seg) * var(--cap) + (var(--cap) - 1) * 3px + 10px); }
+  .vb .foot { padding-top: 0; }
+
+  .art-c .sign { top: 92px; right: 16px; font-size: 18px; }
+  .vc .rack { overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+  .vc .tap { display: flex; align-items: center; gap: 6px; }
+  .vc .plate { width: 84px; flex: 0 0 auto; }
+  .vc .tube {
+    flex: 1;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    touch-action: none;
+  }
+  .vc .mouth {
+    width: 18px;
+    height: 28px;
+    flex: 0 0 auto;
+    background: var(--cyan);
+    box-shadow: 0 0 8px var(--cyan);
+  }
+  .vc .tube.no .mouth { background: var(--dim); box-shadow: none; }
+
+  .banner {
+    margin: 8px 12px 0;
+    padding: 10px;
+    border: 2px solid var(--gold);
+    color: var(--gold);
+    background: #100e14;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .banner b { font-size: 28px; letter-spacing: 0.12em; }
+  .banner button { margin-top: 4px; }
+
+  .cover {
+    background: #100e14;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    gap: 16px;
+  }
+  .cover h1 { margin: 0; font-size: 28px; color: var(--pink); font-weight: normal; }
+  .cover .go { font-size: 18px; padding: 12px 16px; }
+  .cities { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+  .cities button { padding: 14px; font-size: 18px; }
+  .cities button.bright { color: var(--cyan); border-color: var(--cyan); }
+  .cities button.dim { color: var(--dim); }
+  .card {
+    position: absolute;
+    inset: 0;
+    background: #100e14;
+    border: 0;
+    padding: 28px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 4;
+  }
+  .swatch { height: 72px; box-shadow: inset 0 0 0 2px rgba(255,255,255,.28); }
+  .card p { margin: 0; line-height: 1.35; }
+  .state {
+    max-width: 640px;
+    width: 100%;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  .state div { display: grid; grid-template-columns: 150px 1fr; gap: 6px; }
+  .state dt { color: var(--dim); }
+  .state dd { margin: 0; }
+  .chrome, .switcher {
+    position: fixed;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    padding: 6px 8px;
+    background: #0c0b10;
+    border: 2px solid #fff;
+    z-index: 5;
+  }
+  .chrome {
+    left: 12px; right: 12px; bottom: 64px;
+    flex-wrap: wrap;
+    justify-content: center;
+    border-radius: 16px;
+  }
+  .switcher {
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 14px;
+    border-radius: 999px;
+  }
+  .chrome span, .switcher span { white-space: nowrap; font-size: 12px; padding: 0 6px; }
+  .chrome button, .switcher button {
+    border-radius: 999px;
+    padding: 6px 8px;
+    font-size: 12px;
+    white-space: nowrap;
+    border-color: #fff;
+    color: #fff;
+  }
+</style>
+</head>
+<body>
+  <p class="ask">Принят <strong>прилавок</strong>. Бутылки стоят, перелив — два тапа, имя собранной бутылки под ней. Рука и краны оставлены на переключателе как отклонённые. Нижняя белая панель — оболочка прототипа, не экран игры.</p>
+  <div class="phone" id="phone"></div>
+  <dl class="state" id="state"></dl>
+  <div class="chrome" id="chrome">
+    <span>прототип</span>
+    <button type="button" data-preset="small">4 бутылки</button>
+    <button type="button" data-preset="big">10 бутылок</button>
+    <button type="button" data-preset="partial">Частичный перелив</button>
+    <button type="button" data-preset="win">Победа в один ход</button>
+    <button type="button" data-preset="die">Гибель в последний ход</button>
+    <button type="button" data-mood="120,120">120/120 Трезв</button>
+    <button type="button" data-mood="70,120">70/120 Навеселе</button>
+    <button type="button" data-mood="40,120">40/120 Пьян</button>
+    <button type="button" data-mood="20,120">20/120 В хлам</button>
+  </div>
+  <div class="switcher" id="switcher">
+    <button type="button" id="prev" aria-label="Предыдущий вариант">←</button>
+    <span id="vlabel"></span>
+    <button type="button" id="next" aria-label="Следующий вариант">→</button>
+  </div>
+<script>
+const VARIANTS = ['A', 'B', 'C'];
+const VARIANT_NAME = { A: 'Прилавок', B: 'Рука', C: 'Краны' };
+const DRINKS = {
+  guinness: { name: 'Guinness Draught', short: 'Guinness', price: 1, color: '#8a2340', abv: '4,2%' },
+  pilsner: { name: 'Pilsner Urquell', short: 'Pilsner', price: 1, color: '#f0c84a', abv: '4,4%' },
+  aperol: { name: 'Aperol', short: 'Aperol', price: 2, color: '#ff6a1a', abv: '11%' },
+  violette: { name: 'Giffard Crème de Violette', short: 'Violette', price: 2, color: '#7a3dff', abv: '16%' },
+  baileys: { name: 'Baileys Original Irish Cream', short: 'Baileys', price: 2, color: '#e6d2b5', abv: '17%' },
+  lichi: { name: 'Giffard Lichi-Li', short: 'Lichi-Li', price: 2, color: '#f3b6c8', abv: '18%' },
+  bols: { name: 'Bols Blue Curaçao', short: 'Curaçao', price: 2, color: '#2f6bff', abv: '21%' },
+  campari: { name: 'Campari', short: 'Campari', price: 2, color: '#e10600', abv: '25%' },
+  chartreuse: { name: 'Chartreuse Verte', short: 'Chartreuse', price: 3, color: '#c6e04a', abv: '55%' }
+};
+
+const player = { stock: 120, ceiling: 120 };
+const game = {
+  where: '',
+  label: '',
+  cap: 3,
+  bottles: [],
+  paid: {},
+  moves: 0,
+  history: [],
+  selected: null,
+  phase: 'play',
+  card: null,
+  stars: null,
+  waste: null,
+  worldKind: 'new',
+  last: 'Стартовая расстановка Under, уровень 1.'
+};
+
+let variant = 'A';
+let drag = null;
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+function moodName(stock, ceiling) {
+  if (stock <= 0) return 'Погиб';
+  const q = stock / ceiling;
+  if (q >= 0.75) return 'Трезв';
+  if (q >= 0.5) return 'Навеселе';
+  if (q >= 0.25) return 'Пьян';
+  return 'В хлам';
+}
+function moodClass() {
+  return { 'Трезв': 'sober', 'Навеселе': 'tipsy', 'Пьян': 'drunk', 'В хлам': 'wasted' }[moodName(player.stock, player.ceiling)] || 'sober';
+}
+function cloneBottles(bottles) { return bottles.map((b) => b.slice()); }
+function topRun(bottle) {
+  if (!bottle.length) return { id: null, n: 0 };
+  const id = bottle[bottle.length - 1];
+  let n = 0;
+  for (let i = bottle.length - 1; i >= 0 && bottle[i] === id; i -= 1) n += 1;
+  return { id, n };
+}
+function isComplete(bottle) {
+  return bottle.length === game.cap && bottle.every((id) => id === bottle[0]);
+}
+function isSolved() {
+  return game.bottles.every((bottle) => bottle.length === 0 || isComplete(bottle));
+}
+function pourBlock(from, to) {
+  const src = game.bottles[from];
+  const dst = game.bottles[to];
+  if (!src.length) return 'Исходная бутылка пуста.';
+  if (game.cap - dst.length <= 0) return 'В принимающей бутылке нет места.';
+  if (dst.length && dst[dst.length - 1] !== topRun(src).id) return 'Сверху другой напиток. Перелить нельзя.';
+  return '';
+}
+function wasteOf() {
+  return Object.entries(game.paid).reduce((sum, [index, paid]) => {
+    return game.bottles[index].length === 0 ? sum + paid.price : sum;
+  }, 0);
+}
+function starsFrom(waste) {
+  if (waste <= 0) return 3;
+  if (waste <= 2) return 2;
+  return 1;
+}
+function segPx() {
+  const many = game.bottles.length > 6;
+  if (variant === 'C') return many ? 28 : 36;
+  if (variant === 'B') return many ? 18 : (game.cap >= 6 ? 28 : 42);
+  return many ? 26 : (game.cap >= 6 ? 36 : 52);
+}
+function cols() {
+  const n = game.bottles.length;
+  if (n <= 4) return 4;
+  if (n <= 6) return 3;
+  return 5;
+}
+
+function boardSmall() {
+  return {
+    where: 'Зыбицкая · Under · 1',
+    label: '4 бутылки, вместимость 3, два напитка',
+    cap: 3,
+    paid: {},
+    bottles: [
+      ['guinness', 'pilsner', 'guinness'],
+      ['pilsner', 'guinness', 'pilsner'],
+      [],
+      []
+    ]
+  };
+}
+function boardBig() {
+  const order = ['guinness', 'pilsner', 'aperol', 'violette', 'baileys', 'lichi', 'bols', 'campari'];
+  const bottles = [];
+  for (let i = 0; i < 8; i += 1) {
+    const bottle = [];
+    for (let k = 0; k < 6; k += 1) bottle.push(order[(i + k) % 8]);
+    bottles.push(bottle);
+  }
+  bottles.push([], []);
+  return {
+    where: 'Зыбицкая · Матрешка · 20',
+    label: '10 бутылок, вместимость 6, восемь напитков',
+    cap: 6,
+    paid: {},
+    bottles
+  };
+}
+function boardPartial() {
+  return {
+    where: 'Частичный перелив',
+    label: 'сверху 3 порции Guinness, в соседней свободно 2',
+    cap: 6,
+    paid: { 2: { drink: 'pilsner', price: 1 } },
+    bottles: [
+      ['aperol', 'guinness', 'guinness', 'guinness'],
+      ['guinness', 'guinness', 'guinness', 'guinness'],
+      ['pilsner', 'pilsner', 'pilsner', 'pilsner', 'pilsner', 'pilsner'],
+      []
+    ]
+  };
+}
+function boardEdge() {
+  return {
+    where: 'Последний ход',
+    label: 'ещё одно переливание собирает уровень',
+    cap: 3,
+    paid: { 0: { drink: 'guinness', price: 1 } },
+    bottles: [
+      ['guinness', 'guinness', 'guinness'],
+      ['pilsner', 'pilsner'],
+      ['pilsner'],
+      []
+    ]
+  };
+}
+function applyBoard(board, last) {
+  game.where = board.where;
+  game.label = board.label;
+  game.cap = board.cap;
+  game.bottles = cloneBottles(board.bottles);
+  game.paid = JSON.parse(JSON.stringify(board.paid));
+  game.moves = 0;
+  game.history = [];
+  game.selected = null;
+  game.phase = 'play';
+  game.card = null;
+  game.stars = null;
+  game.waste = null;
+  game.last = last;
+}
+
+function undoAvailable() {
+  return game.phase === 'play' && game.history.length > 0;
+}
+function selectBottle(index) {
+  if (game.phase !== 'play' || game.card) return;
+  if (game.selected === null) {
+    if (!game.bottles[index].length) {
+      game.last = 'Бутылка пуста.';
+      render();
+      return;
+    }
+    game.selected = index;
+    const run = topRun(game.bottles[index]);
+    game.last = `Выбрана бутылка ${index + 1}. Сверху ${run.n} × ${DRINKS[run.id].short}.`;
+    render();
+    return;
+  }
+  if (game.selected === index) {
+    game.selected = null;
+    game.last = 'Выбор снят.';
+    render();
+    return;
+  }
+  pour(game.selected, index);
+}
+function pour(from, to) {
+  if (game.phase !== 'play' || game.card) return;
+  const blocked = pourBlock(from, to);
+  if (blocked) {
+    game.last = blocked;
+    render();
+    return;
+  }
+  const run = topRun(game.bottles[from]);
+  const n = Math.min(run.n, game.cap - game.bottles[to].length);
+  game.history.push(cloneBottles(game.bottles));
+  const moved = [];
+  for (let i = 0; i < n; i += 1) moved.push(game.bottles[from].pop());
+  for (let i = moved.length - 1; i >= 0; i -= 1) game.bottles[to].push(moved[i]);
+  game.moves += 1;
+  game.selected = null;
+  const left = run.n - n;
+  let charge = 'Списания нет.';
+  if (isComplete(game.bottles[to])) {
+    if (game.paid[to]) charge = 'Повторная сборка этой бутылки ничего не списывает.';
+    else {
+      const drink = game.bottles[to][0];
+      const price = DRINKS[drink].price;
+      game.paid[to] = { drink, price };
+      player.stock = Math.max(0, player.stock - price);
+      charge = `Списано ${price} за ${DRINKS[drink].short}. Запас ${player.stock}/${player.ceiling}.`;
+    }
+  }
+  const partial = left > 0 ? ` Перелито ${n} из ${run.n}, в исходной осталось ${left}.` : ` Перелито ${n}.`;
+  if (player.stock <= 0) {
+    game.phase = 'dead';
+    game.last = `${partial} ${charge} Запас 0. Персонаж погиб, победа не засчитана.`;
+  } else if (isSolved()) {
+    game.phase = 'won';
+    game.waste = wasteOf();
+    game.stars = starsFrom(game.waste);
+    game.last = `${partial} ${charge} Победа. Лишняя трата ${game.waste}, звёзд ${game.stars}.`;
+  } else {
+    game.last = `${partial} ${charge}`;
+  }
+  render();
+}
+function undo() {
+  if (!undoAvailable()) return;
+  game.bottles = game.history.pop();
+  game.moves -= 1;
+  game.selected = null;
+  game.card = null;
+  game.last = 'Отмена хода. Порции вернулись, ход снят со счётчика. Выносливость не вернулась.';
+  render();
+}
+function openCard(index) {
+  if ((game.phase !== 'play' && game.phase !== 'won') || !isComplete(game.bottles[index])) return;
+  game.card = game.bottles[index][0];
+  game.last = 'Открыта карточка. Выбор бутылки и карточка в историю отмены не входят.';
+  render();
+}
+function newGame() {
+  player.stock = 120;
+  player.ceiling = 120;
+  game.phase = 'world';
+  game.worldKind = 'new';
+  game.card = null;
+  game.selected = null;
+  game.stars = null;
+  game.last = 'Новая игра. Звёзды, открытые уровни, награды и незавершённые партии сброшены. Запас и потолок 120/120. Открыт мир.';
+  render();
+}
+function openFirstLevel() {
+  applyBoard(boardSmall(), 'Новый заход. Under, уровень 1, стартовая расстановка. Запас прежний.');
+  render();
+}
+
+function bottleSlots(bottle) {
+  const cells = [];
+  for (let i = 0; i < game.cap - bottle.length; i += 1) cells.push('<i class="slot empty"></i>');
+  for (let i = bottle.length - 1; i >= 0; i -= 1) {
+    cells.push(`<i class="slot fill" style="background:${DRINKS[bottle[i]].color}"></i>`);
+  }
+  return cells.join('');
+}
+function rowSlots(bottle) {
+  const cells = bottle.map((id) => `<i class="slot fill" style="background:${DRINKS[id].color}"></i>`);
+  for (let i = bottle.length; i < game.cap; i += 1) cells.push('<i class="slot empty"></i>');
+  return cells.join('');
+}
+function nameControl(index, bottle) {
+  if (!isComplete(bottle)) return '<span class="name quiet">·</span>';
+  return `<button type="button" class="name" data-act="card" data-i="${index}">${esc(DRINKS[bottle[0]].short)}</button>`;
+}
+function legal(index) {
+  if (game.selected === null || game.selected === index) return true;
+  return !pourBlock(game.selected, index);
+}
+function stamHtml() {
+  const mood = moodName(player.stock, player.ceiling);
+  return `<div class="stam hud-still"><b>${player.stock}/${player.ceiling}</b><span>${mood}</span></div>`;
+}
+function undoHtml() {
+  const off = undoAvailable() ? '' : ' off';
+  const disabled = undoAvailable() ? '' : ' disabled';
+  return `<button type="button" class="undo${off}" data-act="undo"${disabled}>Отмена хода</button>`;
+}
+function victoryHtml() {
+  if (game.phase !== 'won') return '';
+  const stars = '★'.repeat(game.stars) + '☆'.repeat(3 - game.stars);
+  return `<div class="banner"><span>Победа</span><b>${stars}</b><span>ходы: ${game.moves}</span><button type="button" class="go" data-act="film">К уровням</button></div>`;
+}
+function cardHtml() {
+  if (!game.card) return '';
+  const drink = DRINKS[game.card];
+  return `<div class="card">
+    <div class="swatch" style="background:${drink.color}"></div>
+    <p>${esc(drink.name)}</p>
+    <p>Крепость ${drink.abv}. Цена бутылки ${drink.price}.</p>
+    <p>Фотография, культура употребления, история и факты решаются на экране карточки. Здесь только путь туда.</p>
+    <button type="button" class="card-close" data-act="closecard">Закрыть</button>
+  </div>`;
+}
+function gridHtml(kind) {
+  return game.bottles.map((bottle, index) => {
+    const cls = [
+      kind,
+      game.selected === index ? 'sel' : '',
+      isComplete(bottle) ? 'done' : '',
+      legal(index) ? '' : 'no'
+    ].filter(Boolean).join(' ');
+    const slots = kind === 'tube' ? rowSlots(bottle) : bottleSlots(bottle);
+    const axis = kind === 'tube' ? 'row' : 'col';
+    return `<div class="cell tap">
+      ${kind === 'tube' ? nameControl(index, bottle).replace('class="name', 'class="plate') : ''}
+      <button type="button" class="${cls}" data-bottle="${index}" style="--seg:${segPx()}px;--cap:${game.cap}">
+        <span class="slots ${axis}">${slots}</span>
+        ${kind === 'tube' ? `<span class="mouth" data-mouth="${index}"></span>` : ''}
+      </button>
+      ${kind === 'tube' ? '' : nameControl(index, bottle)}
+    </div>`;
+  }).join('');
+}
+function artHtml() {
+  const sign = variant === 'C' ? 'КРАНЫ' : 'UNDER';
+  return `<div class="art ${moodClass()} art-${variant.toLowerCase()}"><div class="sign">${sign}</div></div>`;
+}
+function variantA() {
+  return `${artHtml()}<div class="play va">
+    <div class="hud"><button type="button" class="back" data-act="back">Назад</button><div class="where">${esc(game.where)}</div>${stamHtml()}</div>
+    ${victoryHtml()}
+    <div class="rack"><div class="grid" style="grid-template-columns:repeat(${cols()},1fr)">${gridHtml('bottle')}</div></div>
+    <div class="foot">${undoHtml()}<div class="moves">${game.moves}<small>ходы</small></div></div>
+    ${cardHtml()}
+  </div>`;
+}
+function handHtml() {
+  if (game.selected === null) return '<span>Рука пуста. Тап по бутылке берёт верхнюю стопку.</span>';
+  const run = topRun(game.bottles[game.selected]);
+  const bits = Array.from({ length: run.n }, () => `<i class="slot fill" style="width:28px;background:${DRINKS[run.id].color}"></i>`).join('');
+  const done = isComplete(game.bottles[game.selected]);
+  const card = done ? `<button type="button" class="name" data-act="card" data-i="${game.selected}">Карточка</button>` : '';
+  return `<span class="slots row">${bits}</span><span>${run.n} × ${esc(DRINKS[run.id].short)}. Жидкость ещё в бутылке.</span>${card}`;
+}
+function variantB() {
+  const mood = moodName(player.stock, player.ceiling);
+  return `${artHtml()}<div class="play vb">
+    <div class="body">
+      <div class="thermo hud-still"><b>${player.stock}/${player.ceiling}</b><span class="mood">${mood}</span></div>
+      <div class="main">
+        <div class="hand" data-act="clear">${handHtml()}</div>
+        ${victoryHtml()}
+        <div class="hint">${esc(game.where)}. Тап по подсвеченной бутылке ставит стопку.</div>
+        <div class="rack"><div class="grid" style="grid-template-columns:repeat(${cols()},1fr)">${gridHtml('bottle')}</div></div>
+      </div>
+    </div>
+    <div class="foot"><button type="button" class="back" data-act="back">Назад</button>${undoHtml()}<div class="moves">${game.moves}<small>ходы</small></div></div>
+    ${cardHtml()}
+  </div>`;
+}
+function variantC() {
+  return `${artHtml()}<div class="play vc">
+    <div class="hud">${stamHtml()}<div class="where">${esc(game.where)}</div></div>
+    ${victoryHtml()}
+    <div class="hint">Потяните голубое горлышко к другому крану. Короткий тап выбирает.</div>
+    <div class="rack">${gridHtml('tube')}</div>
+    <div class="foot"><button type="button" class="back" data-act="back">Назад</button>${undoHtml()}<div class="moves">${game.moves}<small>ходы</small></div></div>
+    ${cardHtml()}
+  </div>`;
+}
+function deathHtml() {
+  return `<div class="cover"><h1>Персонаж погиб</h1><button type="button" class="go" data-act="newgame">Новая игра</button></div>`;
+}
+function worldHtml() {
+  const fresh = game.worldKind === 'new';
+  const minsk = fresh ? 'Минск<br>0/336' : 'Минск<br>уровень уже со звёздами';
+  const others = fresh
+    ? '<button type="button" class="dim" disabled>Витебск<br>0/168</button><button type="button" class="dim" disabled>Москва<br>0/120</button>'
+    : '<button type="button" class="dim" disabled>Витебск</button><button type="button" class="dim" disabled>Москва</button>';
+  const note = fresh
+    ? 'После сброса открыт мир. Минск здесь сразу начинает первый уровень Under.'
+    : 'Это не новая игра: запас не вернулся к потолку. Минск начинает новый заход того же уровня.';
+  return `<div class="cover"><div class="where">Мир</div>
+    <div class="cities">
+      <button type="button" class="bright" data-act="level">${minsk}</button>
+      ${others}
+    </div>
+    <p class="hint">${note}</p>
+  </div>`;
+}
+function filmHtml() {
+  const stars = '★'.repeat(game.stars || 0);
+  return `<div class="cover"><h1>Уровни · Under</h1><p>1 · ${stars}</p><p class="hint">Плёнка уровней здесь не проектируется.</p><button type="button" class="go" data-act="world">На мир</button></div>`;
+}
+function renderPhone() {
+  if (game.phase === 'dead') return deathHtml();
+  if (game.phase === 'world') return worldHtml();
+  if (game.phase === 'film') return filmHtml();
+  if (variant === 'B') return variantB();
+  if (variant === 'C') return variantC();
+  return variantA();
+}
+function paidText() {
+  const rows = Object.entries(game.paid);
+  if (!rows.length) return 'нет';
+  return rows.map(([index, paid]) => `бутылка ${Number(index) + 1}, ${DRINKS[paid.drink].short}, ${paid.price}`).join('; ');
+}
+function renderState() {
+  const phase = { play: 'идёт заход', won: 'победа', dead: 'персонаж погиб', world: 'мир', film: 'плёнка уровней' }[game.phase];
+  const showBoard = game.phase === 'play' || game.phase === 'won' || game.phase === 'dead';
+  const selected = !showBoard || game.selected === null ? 'нет' : String(game.selected + 1);
+  const rows = [
+    ['Вариант', `${variant} · ${VARIANT_NAME[variant]}`],
+    ['Экран', `${phase}. ${showBoard ? (game.where || '—') : '—'}`],
+    ['Расклад', showBoard ? (game.label || '—') : '—'],
+    ['Запас', `${player.stock}/${player.ceiling}, ${moodName(player.stock, player.ceiling)}`],
+    ['Ходы', showBoard ? String(game.moves) : '—'],
+    ['Отмена хода', showBoard && undoAvailable() ? 'доступна' : 'недоступна'],
+    ['Выбрана', selected],
+    ['Списано', showBoard ? paidText() : 'нет'],
+    ['Последнее', game.last]
+  ];
+  document.getElementById('state').innerHTML = rows.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('');
+  document.getElementById('vlabel').textContent = `${variant} (${VARIANT_NAME[variant]})`;
+}
+function render() {
+  document.getElementById('phone').innerHTML = `<div class="screen">${renderPhone()}</div>`;
+  renderState();
+}
+function setVariant(next) {
+  variant = next;
+  const url = new URL(location.href);
+  url.searchParams.set('variant', next);
+  history.replaceState(null, '', url);
+  render();
+}
+function cycle(step) {
+  const index = VARIANTS.indexOf(variant);
+  setVariant(VARIANTS[(index + step + VARIANTS.length) % VARIANTS.length]);
+}
+function setMood(stock, ceiling) {
+  if (game.phase === 'dead' || game.phase === 'world' || game.phase === 'film') {
+    game.last = 'Эти кнопки меняют запас только на экране уровня.';
+    render();
+    return;
+  }
+  player.stock = stock;
+  player.ceiling = ceiling;
+  game.last = `Запас ${stock}/${ceiling}, ${moodName(stock, ceiling)}. Бутылки, числа и кнопки не качаются.`;
+  render();
+}
+
+document.getElementById('prev').addEventListener('click', () => cycle(-1));
+document.getElementById('next').addEventListener('click', () => cycle(1));
+document.addEventListener('keydown', (event) => {
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || (document.activeElement && document.activeElement.isContentEditable)) return;
+  if (event.key === 'ArrowLeft') { event.preventDefault(); cycle(-1); }
+  if (event.key === 'ArrowRight') { event.preventDefault(); cycle(1); }
+});
+function rememberPreset(preset) {
+  const url = new URL(location.href);
+  if (preset) url.searchParams.set('preset', preset);
+  else url.searchParams.delete('preset');
+  history.replaceState(null, '', url);
+}
+function loadPreset(preset) {
+  if (preset === 'big') applyBoard(boardBig(), 'Стартовая расстановка Матрешка, уровень 20.');
+  else if (preset === 'partial') applyBoard(boardPartial(), 'Перелейте левую стопку Guinness в соседнюю: уйдут две порции, одна останется.');
+  else if (preset === 'win') {
+    applyBoard(boardEdge(), 'Перелив единственного Pilsner в соседнюю бутылку собирает уровень. Запас 10, гибели нет.');
+    player.stock = 10;
+    player.ceiling = 120;
+  } else if (preset === 'die') {
+    applyBoard(boardEdge(), 'Тот же ход собирает уровень, но запас 1. Цена Pilsner равна 1, поэтому запас станет 0 и откроется поражение.');
+    player.stock = 1;
+    player.ceiling = 120;
+  } else {
+    preset = 'small';
+    applyBoard(boardSmall(), 'Стартовая расстановка Under, уровень 1.');
+  }
+  rememberPreset(preset);
+}
+document.getElementById('chrome').addEventListener('click', (event) => {
+  const button = event.target.closest('button');
+  if (!button) return;
+  if (button.dataset.preset) {
+    loadPreset(button.dataset.preset);
+    render();
+    return;
+  }
+  if (button.dataset.mood) {
+    const [stock, ceiling] = button.dataset.mood.split(',').map(Number);
+    setMood(stock, ceiling);
+  }
+});
+document.getElementById('phone').addEventListener('click', (event) => {
+  const act = event.target.closest('[data-act]');
+  if (act) {
+    const name = act.dataset.act;
+    if (name === 'undo') undo();
+    if (name === 'back') {
+      game.last = 'Назад вёл бы к плёнке уровней. Незавершённый уровень остаётся на экране: его сохранение ещё не решено.';
+      render();
+    }
+    if (name === 'card') openCard(Number(act.dataset.i));
+    if (name === 'closecard') { game.card = null; game.last = 'Карточка закрыта. Заход продолжается.'; render(); }
+    if (name === 'clear' && !event.target.closest('button')) {
+      game.selected = null;
+      game.last = 'Рука пуста.';
+      render();
+    }
+    if (name === 'newgame') newGame();
+    if (name === 'level') openFirstLevel();
+    if (name === 'film') {
+      game.phase = 'film';
+      game.card = null;
+      game.last = 'Дальше была бы плёнка уровней бара.';
+      render();
+    }
+    if (name === 'world') {
+      game.phase = 'world';
+      game.worldKind = 'won';
+      game.last = 'Мир после победы. Это не новая игра: запас не вернулся к потолку.';
+      render();
+    }
+    return;
+  }
+  const bottle = event.target.closest('[data-bottle]');
+  if (!bottle || variant === 'C') return;
+  selectBottle(Number(bottle.dataset.bottle));
+});
+document.getElementById('phone').addEventListener('pointerdown', (event) => {
+  if (variant !== 'C' || game.phase !== 'play' || game.card) return;
+  const bottle = event.target.closest('[data-bottle]');
+  if (!bottle) return;
+  drag = {
+    from: Number(bottle.dataset.bottle),
+    x: event.clientX,
+    y: event.clientY,
+    moved: false,
+    pointerId: event.pointerId
+  };
+});
+document.addEventListener('pointermove', (event) => {
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 8) drag.moved = true;
+});
+document.addEventListener('pointerup', (event) => {
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  const from = drag.from;
+  const moved = drag.moved;
+  drag = null;
+  if (variant !== 'C' || game.phase !== 'play') return;
+  const hit = document.elementFromPoint(event.clientX, event.clientY);
+  const bottle = hit && hit.closest ? hit.closest('[data-bottle]') : null;
+  const to = bottle ? Number(bottle.dataset.bottle) : null;
+  if (moved && to !== null && to !== from) {
+    game.selected = null;
+    pour(from, to);
+    return;
+  }
+  selectBottle(from);
+});
+
+const params = new URLSearchParams(location.search);
+variant = VARIANTS.includes(params.get('variant')) ? params.get('variant') : 'A';
+loadPreset(params.get('preset') || 'small');
+setVariant(variant);
+</script>
+</body>
+</html>
