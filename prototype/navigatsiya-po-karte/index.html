@@ -6,8 +6,9 @@
 <title>Прототип: навигация по карте</title>
 <!--
   PROTOTYPE, not production.
-  Accepted variant: B, лента пути. A and C stay on the switcher as the rejected takes.
-  Path: мир → город → улица → плёнка уровней. No country step.
+  Accepted: the map fills the screen. The left scale ribbon is gone.
+  A and C stay on the switcher as rejected takes.
+  Path: мир → город → улица → плёнка уровней. Back is one step.
 -->
 <style>
   :root {
@@ -136,23 +137,16 @@
   .va .lv .num { font-size: 18px; }
 
   .vb .body { flex: 1; min-height: 0; display: flex; }
-  .vb .spine {
-    width: 92px;
-    border-right: 2px solid var(--line);
-    display: flex;
-    flex-direction: column;
-  }
-  .vb .spine button {
-    flex: 1;
-    border: 0;
-    border-bottom: 2px solid var(--line);
-    color: var(--dim);
-    letter-spacing: 0.06em;
-  }
-  .vb .spine button.on { color: var(--cyan); background: #142226; }
-  .vb .spine button.been { color: var(--ink); }
   .vb .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .vb .hud-strip { border-bottom: 2px solid var(--line); display: block; text-align: left; }
+  .vb .hud-strip {
+    border-bottom: 2px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    text-align: left;
+  }
+  .vb .hud-strip .back { border-color: var(--pink); color: var(--pink); padding: 6px 8px; }
   .vb .places { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; align-content: flex-start; }
   .vb .place { width: calc(50% - 4px); min-height: 72px; }
   .vb .film {
@@ -273,7 +267,7 @@
 </style>
 </head>
 <body>
-  <p class="ask">Принят вариант <strong>B, лента пути</strong>: слева мир, город и улица, уровни — плёнкой карточек. A и C оставлены на переключателе как отклонённые. Панель внизу — оболочка прототипа, не экран игры.</p>
+  <p class="ask">Принята <strong>карта на весь экран</strong>. Лента ступеней слева снята. Назад — один шаг. Уровни бара — плёнка карточек. A и C оставлены на переключателе как отклонённые. Панель внизу — оболочка прототипа, не экран игры.</p>
   <div class="phone" id="phone"></div>
   <p class="state" id="state"></p>
   <div class="chrome" id="chrome">
@@ -297,7 +291,7 @@
 const VARIANTS = ['A', 'B', 'C'];
 const VARIANT_NAME = {
   A: 'Лестница масштабов',
-  B: 'Лента пути',
+  B: 'Карта',
   C: 'Вывеска'
 };
 
@@ -638,23 +632,14 @@ function renderA() {
   return `<div class="screen va">${hudA()}<div class="art ${moodClass()}">${body}</div></div>`;
 }
 
-function spine() {
-  const steps = [
-    ['world', 'Мир', true],
-    ['city', 'Город', !!state.city],
-    ['street', 'Улица', !!state.street]
-  ];
-  const here = state.street ? 'street' : state.city ? 'city' : 'world';
-  return `<nav class="spine">${steps.map(([id, label, been]) => {
-    const cls = id === here ? 'on' : been ? 'been' : '';
-    return `<button type="button" class="${cls}" data-act="spine" data-scale="${id}">${label}</button>`;
-  }).join('')}</nav>`;
-}
 function renderB() {
   if (!state.alive) return renderDead();
   const main = state.bar ? `<div class="film">${levelButtons('card')}</div>` : mapArt();
-  const hud = `<div class="hud-strip hud-still"><b>${state.stock}/${state.cap}</b><span>${esc(moodName(state.stock, state.cap))} · ${esc(pathText())}</span></div>`;
-  return `<div class="screen vb">${hud}<div class="body">${spine()}<div class="main"><div class="art ${moodClass()}">${main}</div></div></div></div>`;
+  const back = state.city
+    ? `<button type="button" class="back" data-act="back">назад</button>`
+    : '';
+  const hud = `<div class="hud-strip hud-still">${back}<div><b>${state.stock}/${state.cap}</b><span>${esc(moodName(state.stock, state.cap))} · ${esc(pathText())}</span></div></div>`;
+  return `<div class="screen vb">${hud}<div class="body"><div class="main"><div class="art ${moodClass()}">${main}</div></div></div></div>`;
 }
 
 function renderC() {
@@ -695,16 +680,6 @@ function back() {
   else if (state.street) state.street = null;
   else if (state.city) goWorld();
   state.notice = 'Шаг назад по масштабам.';
-}
-function spineTo(scale) {
-  if (scale === 'world') goWorld();
-  else if (scale === 'city' && state.city) { state.street = state.bar = null; }
-  else if (scale === 'street' && state.street) { state.bar = null; }
-  else {
-    state.notice = 'Этот масштаб ещё не выбран.';
-    return;
-  }
-  state.notice = 'Лента переключила масштаб, не шагом назад.';
 }
 function tapLevel(index) {
   const bar = findBar(state.bar);
@@ -771,7 +746,6 @@ function onAct(el) {
   else if (act === 'street') enterStreet(el.dataset.id);
   else if (act === 'bar') enterBar(el.dataset.id);
   else if (act === 'back') back();
-  else if (act === 'spine') spineTo(el.dataset.scale);
   else if (act === 'level') tapLevel(Number(el.dataset.i));
   render();
 }
