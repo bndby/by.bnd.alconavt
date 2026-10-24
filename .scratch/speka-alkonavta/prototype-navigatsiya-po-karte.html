@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Прототип: навигация по карте</title>
+  <style>
+    :root {
+      --paper: #efe7d6;
+      --ink: #1c1915;
+      --night: #07080f;
+      --panel: #10131c;
+      --dim: #5c6578;
+      --line: #2a3144;
+      --neon: #5ef2c0;
+      --hot: #ff4fa3;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font: 16px/1.4 ui-monospace, "Cascadia Code", "Courier New", monospace;
+      padding: 24px 24px 108px;
+    }
+
+    button { font: inherit; color: inherit; }
+
+    .proto { max-width: 920px; margin: 0 auto 20px; }
+    .eyebrow { letter-spacing: 0.14em; text-transform: uppercase; font-size: 12px; margin: 0 0 6px; }
+    h1 { font-size: 28px; line-height: 1.15; margin: 0 0 8px; }
+    .proto p { margin: 0; max-width: 68ch; }
+
+    .stage {
+      max-width: 920px;
+      margin: 0 auto;
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .device {
+      width: 390px;
+      height: min(760px, calc(100dvh - 250px));
+      min-height: 520px;
+      position: relative;
+      overflow: hidden;
+      background: var(--night);
+      color: #f4f7fb;
+      border: 8px solid #161616;
+      box-shadow: 10px 10px 0 #161616;
+      flex: 0 0 auto;
+    }
+
+    .bg {
+      position: absolute;
+      inset: -8%;
+      z-index: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 18% 22%, rgba(94, 242, 192, 0.2), transparent 26%),
+        radial-gradient(circle at 82% 78%, rgba(255, 79, 163, 0.18), transparent 24%),
+        repeating-linear-gradient(0deg, transparent, transparent 7px, rgba(255, 255, 255, 0.035) 7px, rgba(255, 255, 255, 0.035) 8px),
+        var(--night);
+      animation: sway var(--sway-time) ease-in-out infinite alternate;
+      transform-origin: 50% 70%;
+    }
+
+    .sign {
+      position: absolute;
+      color: var(--hot);
+      border: 2px solid var(--hot);
+      padding: 4px 6px;
+      letter-spacing: 0.18em;
+      font-size: 12px;
+      animation: pulse var(--pulse-time) ease-in-out infinite alternate;
+    }
+
+    .sign-a { top: 18%; left: 8%; }
+    .sign-b { right: 10%; bottom: 16%; color: var(--neon); border-color: var(--neon); }
+
+    @keyframes sway {
+      from { transform: rotate(calc(var(--sway) * -1)); }
+      to { transform: rotate(var(--sway)); }
+    }
+
+    @keyframes pulse {
+      from { opacity: 0.35; }
+      to { opacity: calc(0.55 + var(--pulse) * 0.45); }
+    }
+
+    .screen {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+    }
+
+    .hud {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 10px;
+      flex: 0 0 auto;
+    }
+
+    .back, .hit, .row, .cell, .node, .spine button, .ring-label, .death button, .choice {
+      background: var(--panel);
+      border: 2px solid var(--line);
+      color: inherit;
+      text-align: left;
+    }
+
+    .back { padding: 8px 10px; }
+
+    .hud-title { flex: 1; min-width: 0; }
+    .hud-title strong, .plate strong, .choice strong { display: block; font-size: 22px; }
+    .quiet { color: var(--dim); font-size: 12px; }
+
+    .stamina { text-align: right; }
+    .stamina .num, .rail .num, .spine .num { display: block; font-size: 22px; color: var(--neon); }
+    .stamina .mood, .rail .mood, .spine .mood { color: var(--hot); font-size: 13px; }
+
+    .fill { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+
+    .plates { display: flex; gap: 8px; min-height: 0; flex: 1; }
+    .plates.stack { flex-direction: column; }
+    .plate {
+      flex: 1;
+      background: var(--panel);
+      border: 2px solid var(--neon);
+      color: inherit;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 92px;
+    }
+    .plate.wide { flex: 1.7; }
+    .plate .kicker, .choice .kicker, .pin .kicker { color: var(--neon); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+    .bright-names { color: #d5fff1; }
+
+    .dimhit, .pin.dim, .choice.dim, .row.shut, .cell.shut, .node.shut {
+      border-style: dashed;
+      color: var(--dim);
+      background: transparent;
+    }
+
+    .dims { display: flex; flex-wrap: wrap; gap: 6px; }
+    .dimhit, .choice { padding: 8px 10px; }
+
+    .list-note { margin: 0; color: var(--dim); font-size: 12px; }
+
+    .row, .choice {
+      width: 100%;
+      padding: 10px 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+    }
+    .row.open, .cell.open, .node.open { border-color: var(--neon); color: #effff8; }
+    .row.done, .cell.done, .node.done { border-color: var(--hot); }
+    .stars { color: var(--hot); letter-spacing: 0.08em; }
+
+    .b-layout { display: flex; gap: 8px; flex: 1; min-height: 0; }
+    .frames { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+    .ring {
+      border: 2px solid #243044;
+      padding: 6px;
+      min-height: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .ring.current { border-color: var(--neon); }
+    .ring > .ring { margin-top: 6px; }
+    .ring h2 { margin: 0 0 6px; font-size: 16px; }
+    .ring-label { padding: 4px 8px; align-self: flex-start; }
+    .rail {
+      width: 88px;
+      flex: 0 0 auto;
+      border-left: 2px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      align-items: flex-end;
+      padding: 4px 0 8px 8px;
+    }
+
+    .map { position: relative; flex: 1; min-height: 180px; overflow: auto; }
+    .rail .num, .spine .num { font-size: 15px; }
+    .street-map { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 8px 8px 8px 28px; }
+    .street-map::before {
+      content: "";
+      position: absolute;
+      left: 12px;
+      top: 8px;
+      bottom: 8px;
+      width: 2px;
+      background: var(--neon);
+    }
+    .pin.flow { position: relative; transform: none; }
+    .region {
+      position: absolute;
+      background: rgba(16, 19, 28, 0.92);
+      border: 2px solid var(--neon);
+      color: inherit;
+      padding: 8px;
+    }
+    .region.by { left: 4%; top: 28%; width: 34%; height: 48%; }
+    .region.ru { left: 40%; top: 8%; width: 56%; height: 84%; }
+    .region .dot { display: block; color: var(--neon); font-style: normal; margin-top: 6px; }
+    .region .faint { display: block; color: var(--dim); font-style: normal; margin-top: 6px; }
+
+    .pin {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      min-width: 76px;
+      padding: 6px 8px;
+      background: var(--panel);
+      border: 2px solid var(--neon);
+      color: inherit;
+    }
+    .pin.dim { border-style: dashed; color: var(--dim); background: rgba(7, 8, 15, 0.8); }
+    .pond {
+      position: absolute;
+      left: 42%;
+      top: 36%;
+      width: 28%;
+      height: 24%;
+      border: 2px solid #3d4d66;
+      transform: rotate(40deg);
+      pointer-events: none;
+    }
+
+    .c-layout { display: grid; grid-template-columns: 104px 1fr; flex: 1; min-height: 0; gap: 8px; }
+    .spine {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 0;
+      border-right: 2px solid var(--line);
+      padding-right: 8px;
+    }
+    .spine button, .spine .future {
+      padding: 6px;
+      font-size: 12px;
+      text-align: left;
+    }
+    .spine .current {
+      border-color: var(--neon);
+      color: var(--neon);
+      padding: 6px;
+      font-size: 12px;
+    }
+    .spine .future { color: var(--dim); border: 2px dashed var(--line); }
+    .spine .stamina { margin-top: auto; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      overflow: auto;
+      min-height: 0;
+      flex: 1;
+      align-content: start;
+    }
+    .cell {
+      min-height: 64px;
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .cell b { font-size: 18px; }
+
+    .path { display: flex; flex-direction: column; gap: 0; }
+    .step { display: grid; grid-template-columns: 16px 1fr; gap: 8px; }
+    .joint { width: 2px; justify-self: center; background: var(--neon); min-height: 100%; }
+    .step.shut .joint { background: transparent; border-left: 2px dashed var(--dim); width: 0; }
+    .node { width: 100%; margin: 4px 0; padding: 8px 10px; display: flex; justify-content: space-between; }
+
+    .death {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 12px;
+      padding: 12px;
+    }
+    .death h2 { margin: 0; font-size: 32px; }
+    .death button { padding: 14px; border-color: var(--neon); font-size: 20px; }
+
+    .panel {
+      flex: 1 1 280px;
+      min-width: 260px;
+      background: white;
+      border: 2px solid #161616;
+      box-shadow: 6px 6px 0 #161616;
+      padding: 14px;
+    }
+    .panel h2 { margin: 0 0 10px; font-size: 16px; }
+    .panel dl { margin: 0; display: grid; grid-template-columns: 128px 1fr; gap: 6px 8px; }
+    .panel dt { color: #5c5346; }
+    .panel dd { margin: 0; }
+    .scenes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .scenes button {
+      background: var(--ink);
+      color: var(--paper);
+      border: 0;
+      padding: 8px 10px;
+    }
+
+    .switcher {
+      position: fixed;
+      left: 50%;
+      bottom: 16px;
+      transform: translateX(-50%);
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #111;
+      color: #fff;
+      border-radius: 999px;
+      padding: 8px 10px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+    }
+    .switcher button {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 0;
+      background: #fff;
+      color: #111;
+    }
+    .switcher span { min-width: 180px; text-align: center; }
+  </style>
+</head>
+<body>
+  <header class="proto">
+    <p class="eyebrow">Прототип, не игра</p>
+    <h1>Навигация по карте</h1>
+    <p>Как ощущается путь: мир, страна, город, улица, список уровней бара. Правила уже приняты и во всех вариантах одни. Меняется устройство экрана. Стрелки внизу и клавиши влево-вправо переключают вариант.</p>
+  </header>
+
+  <div class="stage">
+    <div id="phone"></div>
+    <aside class="panel" id="panel"></aside>
+  </div>
+
+  <div class="switcher" role="toolbar" aria-label="Вариант прототипа">
+    <button type="button" id="prev" aria-label="Предыдущий вариант">←</button>
+    <span id="variant-label"></span>
+    <button type="button" id="next" aria-label="Следующий вариант">→</button>
+  </div>
+
+  <script>
+    /* Три варианта пути по карте, переключение через ?variant=A|B|C.
+       Вопрос: как ощущается путь мир → страна → город → улица → список уровней.
+       Правила общие, устройство экрана разное. */
+
+    const VARIANTS = [
+      { id: "A", name: "Плашки", blurb: "Один масштаб на весь экран. Назад — отдельная кнопка. Уровни — строки." },
+      { id: "B", name: "Рамка", blurb: "Родитель остаётся рамкой, выбор тапом по схеме. Уровни — сетка клеток." },
+      { id: "C", name: "Лента", blurb: "Шаги пути всегда сбоку, выбор — список имён. Уровни — дорожка узлов." },
+    ];
+
+    const WORLD = [
+      {
+        id: "by",
+        name: "Беларусь",
+        cities: [
+          { id: "minsk", name: "Минск", bright: true, x: "42%", y: "48%" },
+          { id: "vitebsk", name: "Витебск", bright: true, x: "74%", y: "22%" },
+          { id: "grodno", name: "Гродно", bright: false, x: "18%", y: "42%" },
+          { id: "brest", name: "Брест", bright: false, x: "16%", y: "78%" },
+          { id: "gomel", name: "Гомель", bright: false, x: "72%", y: "86%" },
+        ],
+      },
+      {
+        id: "ru",
+        name: "Россия",
+        cities: [
+          { id: "moscow", name: "Москва", bright: true, x: "18%", y: "62%" },
+          { id: "spb", name: "Санкт-Петербург", bright: false, x: "14%", y: "42%" },
+          { id: "kazan", name: "Казань", bright: false, x: "36%", y: "58%" },
+        ],
+      },
+    ];
+
+    const STREETS = {
+      minsk: [
+        { id: "zybitskaya", name: "Зыбицкая", bright: true, hint: "с западного конца, ось на северо-запад" },
+        { id: "nemiga", name: "Немига", bright: false },
+        { id: "oktyabrskaya", name: "Октябрьская", bright: false },
+      ],
+      vitebsk: [
+        { id: "suvorova", name: "Суворова", bright: true, hint: "с севера на юг" },
+        { id: "lenina", name: "Ленина", bright: false },
+      ],
+      moscow: [
+        { id: "patriki", name: "Патрики", bright: true, hint: "по контуру пруда" },
+        { id: "arbat", name: "Арбат", bright: false },
+      ],
+    };
+
+    const BARS = {
+      zybitskaya: [
+        ["under", "Under", 8],
+        ["koyot", "Койот", 8],
+        ["zodiac", "Zodiac", 12],
+        ["ryadom", "Рядом", 12],
+        ["naliv", "Белый Налив", 16],
+        ["gorkiy", "Горький", 16],
+        ["nadne", "На дне", 20],
+        ["matreshka", "Матрешка", 20],
+      ],
+      suvorova: [
+        ["lev", "Золотой лев", 8],
+        ["marvin", "Марвин", 12],
+        ["damask", "«Damask» Kafe-Bar", 16],
+        ["apteka", "Аптека бар", 20],
+      ],
+      patriki: [
+        ["keanu", "Киану", 8],
+        ["bron", "Bro&n", 12],
+        ["zoyka", "Зойка", 20],
+      ],
+    };
+
+    const SCALE_ORDER = ["world", "country", "city", "street", "levels"];
+
+    function esc(value) {
+      return String(value).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+    }
+
+    function countryById(id) { return WORLD.find((country) => country.id === id); }
+    function cityById(countryId, cityId) { return countryById(countryId).cities.find((city) => city.id === cityId); }
+    function streetById(cityId, streetId) { return STREETS[cityId].find((street) => street.id === streetId); }
+    function barById(id) {
+      for (const bars of Object.values(BARS)) {
+        const found = bars.find((bar) => bar[0] === id);
+        if (found) return { id: found[0], name: found[1], levels: found[2] };
+      }
+      return null;
+    }
+
+    function blankProgress() {
+      const progress = {};
+      for (const bars of Object.values(BARS)) {
+        for (const [id, , count] of bars) {
+          progress[id] = { opened: 1, stars: Array(count).fill(0) };
+        }
+      }
+      return progress;
+    }
+
+    function seededProgress() {
+      const progress = blankProgress();
+      progress.under = { opened: 4, stars: [3, 1, 2, 0, 0, 0, 0, 0] };
+      progress.gorkiy = { opened: 2, stars: progress.gorkiy.stars.slice() };
+      progress.gorkiy.stars[0] = 3;
+      return progress;
+    }
+
+    function moodOf(stamina, ceiling) {
+      if (stamina <= 0) return { name: "Погиб", sway: 0, pulse: 0, time: "8s", ptime: "8s", swayWord: "нет" };
+      const ratio = stamina / ceiling;
+      if (ratio >= 0.75) return { name: "Трезв", sway: 0.35, pulse: 0.2, time: "8s", ptime: "7s", swayWord: "едва заметное" };
+      if (ratio >= 0.5) return { name: "Навеселе", sway: 1.15, pulse: 0.45, time: "5.5s", ptime: "4.5s", swayWord: "лёгкое" };
+      if (ratio >= 0.25) return { name: "Пьян", sway: 2.2, pulse: 0.75, time: "4s", ptime: "3s", swayWord: "заметное" };
+      return { name: "В хлам", sway: 3.5, pulse: 1, time: "2.8s", ptime: "1.8s", swayWord: "сильное" };
+    }
+
+    function cloneProgress(progress) {
+      return Object.fromEntries(Object.entries(progress).map(([id, row]) => [id, { opened: row.opened, stars: row.stars.slice() }]));
+    }
+
+    function withNotice(state, patch, notice) {
+      return { ...state, progress: cloneProgress(state.progress), ...patch, notice };
+    }
+
+    function aliveLaunch(notice) {
+      return {
+        alive: true,
+        stamina: 78,
+        ceiling: 120,
+        scale: "world",
+        country: null,
+        city: null,
+        street: null,
+        bar: null,
+        progress: seededProgress(),
+        notice,
+      };
+    }
+
+    function deadLaunch() {
+      const state = aliveLaunch("Сохранённая гибель: запуск снова открывает экран «Персонаж погиб», не мир.");
+      state.alive = false;
+      state.stamina = 0;
+      state.scale = "dead";
+      return state;
+    }
+
+    function freshGame(notice) {
+      return {
+        alive: true,
+        stamina: 120,
+        ceiling: 120,
+        scale: "world",
+        country: null,
+        city: null,
+        street: null,
+        bar: null,
+        progress: blankProgress(),
+        notice,
+      };
+    }
+
+    function goTo(state, scale) {
+      const current = SCALE_ORDER.indexOf(state.scale);
+      const target = SCALE_ORDER.indexOf(scale);
+      if (target < 0 || target > current) return withNotice(state, {}, "Дальше по пути шага ещё нет.");
+      if (scale === "world") return withNotice(state, { scale, country: null, city: null, street: null, bar: null }, "Возврат на мир.");
+      if (scale === "country") return withNotice(state, { scale, city: null, street: null, bar: null }, "Возврат на страну.");
+      if (scale === "city") return withNotice(state, { scale, street: null, bar: null }, "Возврат на город.");
+      if (scale === "street") return withNotice(state, { scale, bar: null }, "Возврат на улицу.");
+      return state;
+    }
+
+    function reduce(state, action) {
+      if (action.type === "scene-alive") return aliveLaunch("Живой запуск открывает мир.");
+      if (action.type === "scene-dead") return deadLaunch();
+      if (action.type === "new-game") return freshGame("Новая игра: 120/120, в каждом баре открыт только первый уровень, на экране мир.");
+      if (action.type === "die") return withNotice(state, { alive: false, stamina: 0, scale: "dead" }, "Запас дошёл до нуля. Карта закрыта, дальше только новая игра.");
+      if (action.type === "set-stamina") {
+        if (!state.alive) return withNotice(state, {}, "Погибшая игра не меняет запас. Доступна только новая игра.");
+        return withNotice(state, { stamina: action.value }, "Запас сменён, чтобы проверить читаемость индикатора и покачивание фона.");
+      }
+      if (!state.alive) return withNotice(state, {}, "Пока персонаж погиб, путь по карте закрыт.");
+      if (action.type === "dim") return withNotice(state, {}, "Тусклое место видно, но тап никуда не ведёт.");
+      if (action.type === "back") {
+        const previous = SCALE_ORDER[SCALE_ORDER.indexOf(state.scale) - 1];
+        if (!previous) return withNotice(state, {}, "Это мир. Более дальнего масштаба нет.");
+        return goTo(state, previous);
+      }
+      if (action.type === "goto") return goTo(state, action.scale);
+      if (action.type === "country") {
+        return withNotice(state, { scale: "country", country: action.id, city: null, street: null, bar: null }, "Тап открыл страну.");
+      }
+      if (action.type === "city") {
+        return withNotice(state, { scale: "city", country: action.country, city: action.id, street: null, bar: null }, "Тап открыл город.");
+      }
+      if (action.type === "street") {
+        return withNotice(state, {
+          scale: "street",
+          country: action.country,
+          city: action.city,
+          street: action.id,
+          bar: null,
+        }, "Тап открыл улицу.");
+      }
+      if (action.type === "bar") {
+        return withNotice(state, {
+          scale: "levels",
+          country: action.country,
+          city: action.city,
+          street: action.street,
+          bar: action.id,
+        }, "Тап по бару открыл список уровней.");
+      }
+      if (action.type === "level") {
+        const row = state.progress[state.bar];
+        if (action.index >= row.opened) return withNotice(state, {}, "Уровень закрыт. Его откроет победа в предыдущем.");
+        if (state.stamina < 1) return withNotice(state, {}, "Чтобы начать уровень, нужна хотя бы одна единица выносливости.");
+        const stars = row.stars[action.index];
+        const kind = stars > 0 ? `пройден, лучший результат ${stars}` : "открыт и ещё не пройден";
+        return withNotice(state, {}, `Уровень ${action.index + 1}: ${kind}. Экран уровня этим прототипом не рисуется.`);
+      }
+      return state;
+    }
+
+    function pathOf(state) {
+      const parts = ["Мир"];
+      if (state.country) parts.push(countryById(state.country).name);
+      if (state.city) parts.push(cityById(state.country, state.city).name);
+      if (state.street) parts.push(streetById(state.city, state.street).name);
+      if (state.bar) parts.push(barById(state.bar).name);
+      return parts.join(" → ");
+    }
+
+    function parentPath(state) {
+      const parts = pathOf(state).split(" → ");
+      parts.pop();
+      return parts.join(" · ");
+    }
+
+    function levelsOf(state, barId) {
+      const bar = barById(barId);
+      const row = state.progress[barId];
+      return Array.from({ length: bar.levels }, (_, index) => {
+        const stars = row.stars[index];
+        const open = index < row.opened;
+        return {
+          index,
+          number: index + 1,
+          kind: !open ? "shut" : stars > 0 ? "done" : "open",
+          stars,
+        };
+      });
+    }
+
+    function starText(count) {
+      return "★".repeat(count) + "☆".repeat(3 - count);
+    }
+
+    function levelFace(level, compact) {
+      if (level.kind === "shut") return "закрыт";
+      if (level.kind === "open") return compact ? "открыт" : "ещё не пройден";
+      return starText(level.stars);
+    }
+
+    let state = aliveLaunch("Живой запуск открывает мир.");
+    let variantId = new URLSearchParams(location.search).get("variant") || "A";
+    if (!VARIANTS.some((item) => item.id === variantId)) variantId = "A";
+
+    const phone = document.querySelector("#phone");
+    const panel = document.querySelector("#panel");
+    const variantLabel = document.querySelector("#variant-label");
+
+    function currentVariant() {
+      return VARIANTS.find((item) => item.id === variantId);
+    }
+
+    function staminaBits(current) {
+      const mood = moodOf(current.stamina, current.ceiling);
+      return `<span class="num">${current.stamina}/${current.ceiling}</span><span class="mood">${esc(mood.name)}</span>`;
+    }
+
+    function hud(current, title) {
+      const back = current.scale === "world"
+        ? ""
+        : `<button class="back" type="button" data-act="back">Назад</button>`;
+      return `<header class="hud">${back}<div class="hud-title"><strong>${esc(title)}</strong><div class="quiet">${esc(parentPath(current))}</div></div><div class="stamina">${staminaBits(current)}</div></header>`;
+    }
+
+    function dimButtons(items) {
+      if (!items.length) return "";
+      return `<div class="dims">${items.map((item) => `<button class="dimhit" type="button" data-act="dim">${esc(item.name)}</button>`).join("")}</div>`;
+    }
+
+    function plates(current) {
+      if (current.scale === "world") {
+        return `<div class="plates">${WORLD.map((country) => {
+          const bright = country.cities.filter((city) => city.bright).map((city) => city.name).join(" · ");
+          const wide = country.id === "ru" ? " wide" : "";
+          return `<button class="plate${wide}" type="button" data-act="country" data-id="${country.id}"><span><span class="kicker">страна</span><strong>${esc(country.name)}</strong></span><span class="bright-names">${esc(bright)}</span></button>`;
+        }).join("")}</div>`;
+      }
+      if (current.scale === "country") {
+        const country = countryById(current.country);
+        const bright = country.cities.filter((city) => city.bright);
+        const dim = country.cities.filter((city) => !city.bright);
+        return `<div class="fill"><div class="plates stack">${bright.map((city) => `<button class="plate" type="button" data-act="city" data-country="${country.id}" data-id="${city.id}"><span class="kicker">город</span><strong>${esc(city.name)}</strong></button>`).join("")}</div>${dimButtons(dim)}</div>`;
+      }
+      if (current.scale === "city") {
+        const streets = STREETS[current.city];
+        const bright = streets.filter((street) => street.bright);
+        const dim = streets.filter((street) => !street.bright);
+        return `<div class="fill"><div class="plates stack">${bright.map((street) => `<button class="plate" type="button" data-act="street" data-country="${current.country}" data-city="${current.city}" data-id="${street.id}"><span class="kicker">улица</span><strong>${esc(street.name)}</strong><span class="quiet">${esc(street.hint)}</span></button>`).join("")}</div>${dimButtons(dim)}</div>`;
+      }
+      if (current.scale === "street") {
+        const street = streetById(current.city, current.street);
+        const bars = BARS[current.street];
+        return `<div class="fill"><p class="list-note">${esc(street.hint)}</p>${bars.map(([id, name, count]) => `<button class="choice" type="button" data-act="bar" data-country="${current.country}" data-city="${current.city}" data-street="${current.street}" data-id="${id}"><span><span class="kicker">бар</span><strong>${esc(name)}</strong></span><span class="quiet">${count} уровней</span></button>`).join("")}<button class="dimhit" type="button" data-act="dim">Дальше по улице</button></div>`;
+      }
+      const bar = barById(current.bar);
+      const rows = levelsOf(current, current.bar).map((level) => `<button class="row ${level.kind}" type="button" data-act="level" data-index="${level.index}"><span>Уровень ${level.number}</span><span class="${level.kind === "done" ? "stars" : ""}">${esc(levelFace(level, false))}</span></button>`).join("");
+      return `<div class="fill"><p class="list-note">${bar.levels} уровней. Звёзды — лучший результат.</p>${rows}</div>`;
+    }
+
+    function titleOf(current) {
+      if (current.scale === "world") return "Мир";
+      if (current.scale === "country") return countryById(current.country).name;
+      if (current.scale === "city") return cityById(current.country, current.city).name;
+      if (current.scale === "street") return streetById(current.city, current.street).name;
+      return barById(current.bar).name;
+    }
+
+    function renderA(current) {
+      return `${hud(current, titleOf(current))}${plates(current)}`;
+    }
+
+    function ringWrap(inner, label, scale, currentScale) {
+      if (scale === currentScale) return `<section class="ring current"><h2>${esc(label)}</h2>${inner}</section>`;
+      return `<section class="ring"><button class="ring-label" type="button" data-act="goto" data-scale="${scale}">${esc(label)}</button>${inner}</section>`;
+    }
+
+    function mapOf(current) {
+      if (current.scale === "world") {
+        return `<div class="map">${WORLD.map((country) => {
+          const dots = country.cities.map((city) => `<i class="${city.bright ? "dot" : "faint"}">${esc(city.name)}</i>`).join("");
+          return `<button class="region ${country.id}" type="button" data-act="country" data-id="${country.id}"><span class="kicker">страна</span><strong>${esc(country.name)}</strong>${dots}</button>`;
+        }).join("")}</div>`;
+      }
+      if (current.scale === "country") {
+        const country = countryById(current.country);
+        const pins = country.cities.map((city) => {
+          if (!city.bright) return `<button class="pin dim" style="left:${city.x};top:${city.y}" type="button" data-act="dim">${esc(city.name)}</button>`;
+          return `<button class="pin" style="left:${city.x};top:${city.y}" type="button" data-act="city" data-country="${country.id}" data-id="${city.id}"><span class="kicker">город</span>${esc(city.name)}</button>`;
+        }).join("");
+        return `<div class="map">${pins}</div>`;
+      }
+      if (current.scale === "city") {
+        return `<div class="map">${STREETS[current.city].map((street, index) => {
+          const top = 24 + index * 22;
+          if (!street.bright) return `<button class="pin dim" style="left:50%;top:${top}%" type="button" data-act="dim">${esc(street.name)}</button>`;
+          return `<button class="pin" style="left:50%;top:${top}%" type="button" data-act="street" data-country="${current.country}" data-city="${current.city}" data-id="${street.id}"><span class="kicker">улица</span>${esc(street.name)}</button>`;
+        }).join("")}</div>`;
+      }
+      if (current.scale === "street") {
+        const bars = BARS[current.street];
+        const hint = `<p class="list-note">${esc(streetById(current.city, current.street).hint)}</p>`;
+        if (current.street === "patriki") {
+          const spots = ["70%,28%", "66%,58%", "46%,80%"];
+          const pins = bars.map(([id, name], index) => {
+            const [left, top] = spots[index].split(",");
+            return `<button class="pin" style="left:${left};top:${top}" type="button" data-act="bar" data-country="${current.country}" data-city="${current.city}" data-street="patriki" data-id="${id}"><span class="kicker">бар</span>${esc(name)}</button>`;
+          }).join("");
+          return `${hint}<div class="map"><div class="pond"></div>${pins}<button class="pin dim" style="left:86%;top:14%" type="button" data-act="dim">За прудом</button></div>`;
+        }
+        const pins = bars.map(([id, name]) => `<button class="pin flow" type="button" data-act="bar" data-country="${current.country}" data-city="${current.city}" data-street="${current.street}" data-id="${id}"><span class="kicker">бар</span>${esc(name)}</button>`).join("");
+        return `${hint}<div class="map street-map">${pins}<button class="pin flow dim" type="button" data-act="dim">Дальше по улице</button></div>`;
+      }
+      const cells = levelsOf(current, current.bar).map((level) => `<button class="cell ${level.kind}" type="button" data-act="level" data-index="${level.index}"><b>${level.number}</b><small class="${level.kind === "done" ? "stars" : ""}">${esc(levelFace(level, true))}</small></button>`).join("");
+      return `<p class="list-note">Звёзды — лучший результат.</p><div class="grid">${cells}</div>`;
+    }
+
+    function renderB(current) {
+      let inner = mapOf(current);
+      const rings = [{ scale: "world", label: "Мир" }];
+      if (current.country) rings.push({ scale: "country", label: countryById(current.country).name });
+      if (current.city) rings.push({ scale: "city", label: cityById(current.country, current.city).name });
+      if (current.street) rings.push({ scale: "street", label: streetById(current.city, current.street).name });
+      if (current.bar) rings.push({ scale: "levels", label: barById(current.bar).name });
+      for (let index = rings.length - 1; index >= 0; index -= 1) {
+        inner = ringWrap(inner, rings[index].label, rings[index].scale, current.scale);
+      }
+      return `<div class="b-layout"><div class="frames">${inner}</div><aside class="rail">${staminaBits(current)}</aside></div>`;
+    }
+
+    function renderC(current) {
+      const steps = [
+        { scale: "world", label: "Мир" },
+        { scale: "country", label: current.country ? countryById(current.country).name : "Страна" },
+        { scale: "city", label: current.city ? cityById(current.country, current.city).name : "Город" },
+        { scale: "street", label: current.street ? streetById(current.city, current.street).name : "Улица" },
+        { scale: "levels", label: current.bar ? barById(current.bar).name : "Бар" },
+      ];
+      const here = SCALE_ORDER.indexOf(current.scale);
+      const spine = steps.map((step, index) => {
+        if (index > here) {
+          const empty = ["Мир", "Страна", "Город", "Улица", "Бар"][index];
+          return `<div class="future">${esc(empty)}</div>`;
+        }
+        if (index === here) return `<div class="current">${esc(step.label)}</div>`;
+        return `<button type="button" data-act="goto" data-scale="${step.scale}">${esc(step.label)}</button>`;
+      }).join("");
+      let body = "";
+      if (current.scale === "world") {
+        body = WORLD.map((country) => `<button class="choice" type="button" data-act="country" data-id="${country.id}"><span><span class="kicker">страна</span><strong>${esc(country.name)}</strong></span></button>`).join("");
+      } else if (current.scale === "country") {
+        body = countryById(current.country).cities.map((city) => {
+          if (!city.bright) return `<button class="choice dim" type="button" data-act="dim">${esc(city.name)}</button>`;
+          return `<button class="choice" type="button" data-act="city" data-country="${current.country}" data-id="${city.id}"><span><span class="kicker">город</span><strong>${esc(city.name)}</strong></span></button>`;
+        }).join("");
+      } else if (current.scale === "city") {
+        body = STREETS[current.city].map((street) => {
+          if (!street.bright) return `<button class="choice dim" type="button" data-act="dim">${esc(street.name)}</button>`;
+          return `<button class="choice" type="button" data-act="street" data-country="${current.country}" data-city="${current.city}" data-id="${street.id}"><span><span class="kicker">улица</span><strong>${esc(street.name)}</strong></span><span class="quiet">${esc(street.hint)}</span></button>`;
+        }).join("");
+      } else if (current.scale === "street") {
+        const hint = streetById(current.city, current.street).hint;
+        body = `<p class="list-note">${esc(hint)}</p>` + BARS[current.street].map(([id, name, count]) => `<button class="choice" type="button" data-act="bar" data-country="${current.country}" data-city="${current.city}" data-street="${current.street}" data-id="${id}"><span><span class="kicker">бар</span><strong>${esc(name)}</strong></span><span class="quiet">${count}</span></button>`).join("") + `<button class="choice dim" type="button" data-act="dim">Дальше по улице</button>`;
+      } else {
+        body = `<p class="list-note">Звёзды — лучший результат.</p><div class="path">` + levelsOf(current, current.bar).map((level) => `<div class="step ${level.kind}"><span class="joint"></span><button class="node ${level.kind}" type="button" data-act="level" data-index="${level.index}"><span>${level.number}</span><span class="${level.kind === "done" ? "stars" : ""}">${esc(levelFace(level, false))}</span></button></div>`).join("") + `</div>`;
+      }
+      return `<div class="c-layout"><nav class="spine">${spine}<div class="stamina">${staminaBits(current)}</div></nav><div class="fill">${body}</div></div>`;
+    }
+
+    function renderDeath() {
+      return `<div class="death"><h2>Персонаж погиб</h2><p>Текущая игра закончена.</p><button type="button" data-act="new-game">Новая игра</button></div>`;
+    }
+
+    function screenHtml(current) {
+      if (!current.alive) return renderDeath();
+      if (variantId === "A") return renderA(current);
+      if (variantId === "B") return renderB(current);
+      return renderC(current);
+    }
+
+    function barSummary(current) {
+      if (!current.bar) return "Бар не выбран";
+      const bar = barById(current.bar);
+      const row = current.progress[bar.id];
+      const done = row.stars.filter((value) => value > 0).length;
+      return `${bar.name}: открыто ${row.opened} из ${bar.levels}, пройдено ${done}`;
+    }
+
+    function render() {
+      const variant = currentVariant();
+      const mood = moodOf(state.stamina, state.ceiling);
+      const style = `--sway:${mood.sway}deg;--pulse:${mood.pulse};--sway-time:${mood.time};--pulse-time:${mood.ptime};`;
+      const signs = state.alive
+        ? `<div class="bg" aria-hidden="true"><span class="sign sign-a">НЕОН</span><span class="sign sign-b">БАР</span></div>`
+        : `<div class="bg" aria-hidden="true"></div>`;
+      phone.innerHTML = `<div class="device" data-scale="${esc(state.scale)}" data-mood="${esc(mood.name)}" style="${style}">${signs}<div class="screen">${screenHtml(state)}</div></div>`;
+      const scaleName = { world: "Мир", country: "Страна", city: "Город", street: "Улица", levels: "Список уровней", dead: "Поражение" }[state.scale];
+      panel.innerHTML = `<h2>Состояние</h2><dl>
+        <dt>Вариант</dt><dd>${esc(variant.id)} «${esc(variant.name)}»</dd>
+        <dt>Устройство</dt><dd>${esc(variant.blurb)}</dd>
+        <dt>Жив</dt><dd>${state.alive ? "да" : "нет"}</dd>
+        <dt>Выносливость</dt><dd>${state.stamina}/${state.ceiling}, ${esc(mood.name)}</dd>
+        <dt>Покачивание</dt><dd>${esc(mood.swayWord)}. Числа и кнопки стоят на месте.</dd>
+        <dt>Масштаб</dt><dd>${esc(scaleName)}</dd>
+        <dt>Путь</dt><dd>${esc(pathOf(state))}</dd>
+        <dt>Уровни</dt><dd>${esc(barSummary(state))}</dd>
+        <dt>Последнее</dt><dd>${esc(state.notice)}</dd>
+      </dl>
+      <div class="scenes">
+        <button type="button" data-act="scene-alive">Сцена: живой запуск</button>
+        <button type="button" data-act="scene-dead">Сцена: запуск после гибели</button>
+        <button type="button" data-act="new-game">Сцена: новая игра</button>
+        <button type="button" data-act="set-stamina" data-value="120">120 Трезв</button>
+        <button type="button" data-act="set-stamina" data-value="78">78 Навеселе</button>
+        <button type="button" data-act="set-stamina" data-value="40">40 Пьян</button>
+        <button type="button" data-act="set-stamina" data-value="20">20 В хлам</button>
+        <button type="button" data-act="die">Гибель сейчас</button>
+      </div>`;
+      variantLabel.textContent = `${variant.id} (${variant.name})`;
+    }
+
+    function setVariant(nextId) {
+      variantId = nextId;
+      const url = new URL(location.href);
+      url.searchParams.set("variant", variantId);
+      try { history.replaceState(null, "", url); } catch (error) { /* файл открыт локально */ }
+      render();
+    }
+
+    function cycle(step) {
+      const index = VARIANTS.findIndex((item) => item.id === variantId);
+      const next = VARIANTS[(index + step + VARIANTS.length) % VARIANTS.length];
+      setVariant(next.id);
+    }
+
+    document.body.addEventListener("click", (event) => {
+      const node = event.target.closest("[data-act]");
+      if (!node || node.closest(".switcher")) return;
+      const action = { type: node.dataset.act };
+      if (node.dataset.id) action.id = node.dataset.id;
+      if (node.dataset.country) action.country = node.dataset.country;
+      if (node.dataset.city) action.city = node.dataset.city;
+      if (node.dataset.street) action.street = node.dataset.street;
+      if (node.dataset.scale) action.scale = node.dataset.scale;
+      if (node.dataset.index) action.index = Number(node.dataset.index);
+      if (node.dataset.value) action.value = Number(node.dataset.value);
+      state = reduce(state, action);
+      render();
+    });
+
+    document.querySelector("#prev").addEventListener("click", () => cycle(-1));
+    document.querySelector("#next").addEventListener("click", () => cycle(1));
+    document.addEventListener("keydown", (event) => {
+      const tag = document.activeElement && document.activeElement.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (document.activeElement && document.activeElement.isContentEditable)) return;
+      if (event.key === "ArrowRight") { cycle(1); event.preventDefault(); }
+      if (event.key === "ArrowLeft") { cycle(-1); event.preventDefault(); }
+    });
+
+    render();
+  </script>
+</body>
+</html>
