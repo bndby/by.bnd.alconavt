@@ -1,5 +1,7 @@
 ## Agent skills
 
+Always respond in russian
+
 ### Issue tracker
 
 Issues живут как markdown-файлы в `.scratch/<feature>/`. См. `docs/agents/issue-tracker.md`.
