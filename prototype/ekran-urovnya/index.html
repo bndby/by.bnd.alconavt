@@ -6,12 +6,8 @@
 <title>Прототип: экран уровня</title>
 <!--
   PROTOTYPE, not production. Throwaway.
-  Question: как выглядит экран переливания?
-  Assumption: своего экрана в игре ещё нет, поэтому это отдельный файл,
-  как prototype/navigatsiya-po-karte/index.html. Варианты на ?variant=.
-  A Прилавок — бутылки стоят, два тапа.
-  B Рука — верхняя стопка в слоте, потом тап.
-  C Краны — бутылки лежат, протяжка от горлышка.
+  Accepted: Прилавок. Бутылки стоят, перелив двумя тапами.
+  B and C stay on the switcher as rejected takes.
   Нижняя панель в игру не входит.
 -->
 <style>
@@ -298,7 +294,7 @@
 </style>
 </head>
 <body>
-  <p class="ask">Как выглядит <strong>экран переливания</strong>? Три разных устройства одного уровня. Правила перелива, отмены, выносливости и гибели уже решены и во всех вариантах одни. Нижняя белая панель — оболочка прототипа, не экран игры. Стрелки и клавиши ← → меняют вариант, расстановка остаётся.</p>
+  <p class="ask">Принят <strong>прилавок</strong>. Бутылки стоят, перелив — два тапа, имя собранной бутылки под ней. Рука и краны оставлены на переключателе как отклонённые. Нижняя белая панель — оболочка прототипа, не экран игры.</p>
   <div class="phone" id="phone"></div>
   <dl class="state" id="state"></dl>
   <div class="chrome" id="chrome">
@@ -660,7 +656,6 @@ function variantA() {
   return `${artHtml()}<div class="play va">
     <div class="hud"><button type="button" class="back" data-act="back">Назад</button><div class="where">${esc(game.where)}</div>${stamHtml()}</div>
     ${victoryHtml()}
-    <div class="hint">Два тапа: откуда и куда. Имя собранной бутылки открывает карточку.</div>
     <div class="rack"><div class="grid" style="grid-template-columns:repeat(${cols()},1fr)">${gridHtml('bottle')}</div></div>
     <div class="foot">${undoHtml()}<div class="moves">${game.moves}<small>ходы</small></div></div>
     ${cardHtml()}
