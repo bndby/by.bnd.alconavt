@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Прототип: навигация по карте</title>
+<!--
+  PROTOTYPE, not production.
+  Accepted: the map fills the screen. The left scale ribbon is gone.
+  A and C stay on the switcher as rejected takes.
+  Path: мир → город → улица → плёнка уровней. Back is one step.
+-->
+<style>
+  :root {
+    --bg: #100e14;
+    --ink: #f6f1e8;
+    --dim: #6d6878;
+    --dim-bg: #221f28;
+    --cyan: #79f6ff;
+    --pink: #ff5ad4;
+    --gold: #ffe56a;
+    --line: #3a3544;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: #1a1720;
+    color: var(--ink);
+    font-family: "Courier New", ui-monospace, monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 18px 16px 168px;
+  }
+  .ask {
+    max-width: 640px;
+    margin: 0;
+    line-height: 1.45;
+    font-size: 14px;
+  }
+  .ask strong { color: var(--cyan); }
+  .phone {
+    width: 390px;
+    height: 760px;
+    background: var(--bg);
+    border: 10px solid #0a090d;
+    border-radius: 28px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 20px 60px #000a;
+  }
+  .screen { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+  .art { flex: 1; min-height: 0; position: relative; overflow: hidden; display: flex; }
+  .mapsvg { width: 100%; height: 100%; display: block; }
+  .mapsvg text { font-family: "Courier New", ui-monospace, monospace; pointer-events: none; }
+  .mapsvg .bright { fill: #10262a; stroke: var(--cyan); cursor: pointer; }
+  .mapsvg .dim { fill: #18161e; stroke: #3c3846; cursor: pointer; }
+  .mapsvg .later { fill: #14121a; stroke: #3a3844; cursor: pointer; }
+  .mapsvg .ghost { fill: #121016; stroke: #322f3a; stroke-width: 0.28; pointer-events: none; }
+  .mapsvg .quiet { fill: #1a1822; stroke: #3a3846; stroke-width: 0.4; pointer-events: none; }
+  .mapsvg .water { fill: #142028; stroke: #3d5c66; }
+  .mapsvg .mark { stroke-width: 0.4; }
+  .mapsvg .road { fill: none; stroke-linecap: round; }
+  .hud-still, .stam, .tube, .hud-strip, .lv, .card, .tag, .hang, .back {
+    animation: none !important;
+  }
+  button {
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    border: 2px solid var(--line);
+    cursor: pointer;
+  }
+  button.bright, .place.bright {
+    color: var(--cyan);
+    border-color: var(--cyan);
+    text-shadow: 0 0 8px var(--cyan);
+  }
+  button.dim, .place.dim {
+    color: var(--dim);
+    border-color: #3a3644;
+    background: var(--dim-bg);
+  }
+  .sign { animation: pulse 2.6s ease-in-out infinite; }
+  .tipsy .sign { animation-duration: 1.8s; }
+  .drunk .sign { animation-duration: 1.05s; }
+  .wasted .sign { animation-duration: 0.55s; }
+  .tipsy.art { animation: sway 3.6s ease-in-out infinite; }
+  .drunk.art { animation: sway 2s ease-in-out infinite; }
+  .wasted.art { animation: sway 0.9s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.55; filter: brightness(1.4); } }
+  @keyframes sway { 50% { transform: rotate(1.4deg) translateY(3px); } }
+  .wasted.art { --sway: 3deg; }
+  @keyframes sway-hard { 50% { transform: rotate(2.8deg) translateY(6px); } }
+  .wasted.art { animation-name: sway-hard; }
+
+  .va .top, .vb .hud-strip, .vc .top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 14px 12px 8px;
+  }
+  .va .cluster { display: flex; align-items: center; gap: 8px; }
+  .va .where { font-size: 18px; letter-spacing: 0.08em; }
+  .va .stam, .vb .hud-strip { text-align: right; line-height: 1.2; }
+  .va .stam b, .vb .hud-strip b { display: block; font-size: 22px; color: var(--gold); }
+  .va .stam span, .vb .hud-strip span { color: var(--pink); font-size: 13px; }
+  .va .back, .vc .hang {
+    border-color: var(--pink);
+    color: var(--pink);
+    padding: 6px 8px;
+  }
+  .va .grid, .vc .grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+  }
+  .va .place, .vc .place {
+    padding: 16px 12px;
+    text-align: left;
+    font-size: 20px;
+  }
+  .va .list, .vc .board { padding: 8px 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .va .lv {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    text-align: left;
+  }
+  .va .lv.locked { color: var(--dim); }
+  .va .lv.open { border-color: var(--cyan); color: var(--cyan); }
+  .va .lv.cleared { border-color: var(--gold); color: var(--gold); }
+  .va .lv .num { font-size: 18px; }
+
+  .vb .body { flex: 1; min-height: 0; display: flex; }
+  .vb .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .vb .hud-strip {
+    border-bottom: 2px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    text-align: left;
+  }
+  .vb .hud-strip .back { border-color: var(--pink); color: var(--pink); padding: 6px 8px; }
+  .vb .places { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; align-content: flex-start; }
+  .vb .place { width: calc(50% - 4px); min-height: 72px; }
+  .vb .film {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 16px 12px;
+    align-items: stretch;
+  }
+  .vb .card {
+    flex: 0 0 104px;
+    height: 140px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 10px;
+  }
+  .vb .card.locked { color: var(--dim); background: #18161c; }
+  .vb .card.open { border-color: var(--cyan); color: var(--cyan); box-shadow: inset 0 0 0 4px #12363a; }
+  .vb .card.cleared { border-color: var(--gold); color: var(--gold); background: #241e0e; }
+  .vb .card .big { font-size: 28px; }
+
+  .vc { background: #07060a; }
+  .vc .window {
+    margin: 0 16px;
+    border: 3px solid var(--pink);
+    box-shadow: 0 0 18px #ff5ad455;
+    min-height: 0;
+    flex: 1;
+    overflow: auto;
+  }
+  .vc .marquee {
+    text-align: center;
+    color: var(--pink);
+    letter-spacing: 0.28em;
+    padding: 16px 8px 8px;
+    font-size: 14px;
+  }
+  .vc .tube {
+    margin: 8px 16px 12px;
+    border: 2px solid var(--gold);
+    color: var(--gold);
+    padding: 8px 10px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .vc .hang { margin: 0 16px 8px; align-self: flex-start; }
+  .vc .tag {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 8px;
+    border-bottom: 2px dashed #4a3b28;
+    width: 100%;
+    text-align: left;
+  }
+  .vc .tag.locked { color: #5c5348; border-style: dotted; }
+  .vc .tag.open { color: var(--cyan); }
+  .vc .tag.cleared { color: var(--gold); }
+
+  .dead {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+    text-align: center;
+    padding: 24px;
+  }
+  .dead h1 { font-size: 28px; margin: 0; letter-spacing: 0.04em; }
+  .dead button {
+    border-color: var(--cyan);
+    color: var(--cyan);
+    padding: 14px 18px;
+    font-size: 18px;
+  }
+
+  .state {
+    max-width: 640px;
+    min-height: 2.8em;
+    margin: 0;
+    color: #c8c2b4;
+    font-size: 13px;
+  }
+  .chrome, .switcher {
+    position: fixed;
+    z-index: 5;
+    background: #0e0c12;
+    border: 2px solid var(--gold);
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    padding: 6px 8px;
+  }
+  .chrome {
+    left: 12px;
+    right: 12px;
+    bottom: 64px;
+    flex-wrap: wrap;
+    justify-content: center;
+    border-radius: 16px;
+  }
+  .switcher {
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 14px;
+    border-color: #fff;
+    border-radius: 999px;
+  }
+  .chrome span, .switcher span { white-space: nowrap; font-size: 12px; padding: 0 6px; }
+  .chrome button, .switcher button {
+    border-radius: 999px;
+    padding: 6px 8px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .switcher button { border-color: #fff; }
+</style>
+</head>
+<body>
+  <p class="ask">Принята <strong>карта на весь экран</strong>. Лента ступеней слева снята. Назад — один шаг. Уровни бара — плёнка карточек. A и C оставлены на переключателе как отклонённые. Панель внизу — оболочка прототипа, не экран игры.</p>
+  <div class="phone" id="phone"></div>
+  <p class="state" id="state"></p>
+  <div class="chrome" id="chrome">
+    <span>прототип</span>
+    <button type="button" data-preset="fresh">С нуля</button>
+    <button type="button" data-preset="mid">Середина</button>
+    <button type="button" data-preset="done">Бар пройден</button>
+    <button type="button" data-preset="dead">Запуск после гибели</button>
+    <button type="button" data-mood="120,120">120/120 Трезв</button>
+    <button type="button" data-mood="70,120">70/120 Навеселе</button>
+    <button type="button" data-mood="40,120">40/120 Пьян</button>
+    <button type="button" data-mood="20,120">20/120 В хлам</button>
+    <button type="button" data-mood="75,150">75/150 Навеселе</button>
+  </div>
+  <div class="switcher" id="switcher">
+    <button type="button" id="prev" aria-label="Предыдущий вариант">←</button>
+    <span id="vlabel"></span>
+    <button type="button" id="next" aria-label="Следующий вариант">→</button>
+  </div>
+<script>
+const VARIANTS = ['A', 'B', 'C'];
+const VARIANT_NAME = {
+  A: 'Лестница масштабов',
+  B: 'Карта',
+  C: 'Вывеска'
+};
+
+const TREE = {
+  by: {
+    name: 'Беларусь',
+    cities: {
+      minsk: {
+        name: 'Минск',
+        streets: {
+          zybitskaya: {
+            name: 'Зыбицкая',
+            bars: [
+              ['under', 'Under', 8],
+              ['koyot', 'Койот', 8],
+              ['zodiac', 'Zodiac', 12],
+              ['ryadom', 'Рядом', 12],
+              ['belyj', 'Белый Налив', 16],
+              ['gorkij', 'Горький', 16],
+              ['nadne', 'На дне', 20],
+              ['matreshka', 'Матрешка', 20]
+            ]
+          }
+        },
+      },
+      vitebsk: {
+        name: 'Витебск',
+        streets: {
+          suvorova: {
+            name: 'Суворова',
+            bars: [
+              ['lev', 'Золотой лев', 8],
+              ['marvin', 'Марвин', 12],
+              ['damask', '«Damask» Kafe-Bar', 16],
+              ['apteka', 'Аптека бар', 20]
+            ]
+          }
+        }
+      }
+    }
+  },
+  ru: {
+    name: 'Россия',
+    cities: {
+      moscow: {
+        name: 'Москва',
+        streets: {
+          patriki: {
+            name: 'Патрики',
+            bars: [
+              ['kianu', 'Киану', 8],
+              ['bron', 'Bro&n', 12],
+              ['zojka', 'Зойка', 20]
+            ]
+          }
+        }
+      }
+    }
+  }
+};
+
+const state = {
+  country: null,
+  city: null,
+  street: null,
+  bar: null,
+  alive: true,
+  stock: 120,
+  cap: 120,
+  stars: {},
+  notice: 'Часть мира с городами набора. Тап по яркой точке открывает город.'
+};
+
+let variant = 'B';
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+function blank(n) { return Array(n).fill(null); }
+function moodName(stock, cap) {
+  if (stock <= 0) return 'Погиб';
+  const q = stock / cap;
+  if (q >= 0.75) return 'Трезв';
+  if (q >= 0.5) return 'Навеселе';
+  if (q >= 0.25) return 'Пьян';
+  return 'В хлам';
+}
+function moodClass() {
+  const name = moodName(state.stock, state.cap);
+  return { 'Трезв': 'sober', 'Навеселе': 'tipsy', 'Пьян': 'drunk', 'В хлам': 'wasted' }[name] || 'sober';
+}
+function findBar(id) {
+  for (const country of Object.values(TREE)) {
+    for (const city of Object.values(country.cities)) {
+      for (const street of Object.values(city.streets)) {
+        for (const [bid, name, levels] of street.bars) {
+          if (bid === id) return { id: bid, name, levels };
+        }
+      }
+    }
+  }
+  return null;
+}
+function starsOf(bar) {
+  if (!state.stars[bar.id]) state.stars[bar.id] = blank(bar.levels);
+  return state.stars[bar.id];
+}
+function levelKind(row, index) {
+  const open = index === 0 || row[index - 1] != null;
+  if (!open) return 'locked';
+  if (row[index] == null) return 'open';
+  return 'cleared';
+}
+function resetProgress() { state.stars = {}; }
+function goWorld() {
+  state.country = state.city = state.street = state.bar = null;
+}
+function newGame() {
+  state.alive = true;
+  state.stock = 120;
+  state.cap = 120;
+  resetProgress();
+  goWorld();
+  state.notice = 'Новая игра. Запас и потолок 120/120. В каждом баре открыт первый уровень.';
+}
+function scaleName() {
+  if (!state.alive) return 'гибель';
+  if (state.bar) return 'список уровней';
+  if (state.street) return 'улица';
+  if (state.city) return 'город';
+  return 'мир';
+}
+function cityOf(id) {
+  for (const [countryId, country] of Object.entries(TREE)) {
+    if (country.cities[id]) return { countryId, city: country.cities[id] };
+  }
+  return null;
+}
+function cityScore(id) {
+  const found = cityOf(id);
+  let got = 0;
+  let total = 0;
+  for (const street of Object.values(found.city.streets)) {
+    for (const [bid, , levels] of street.bars) {
+      total += levels * 3;
+      const row = state.stars[bid];
+      if (row) got += row.reduce((sum, n) => sum + (n || 0), 0);
+    }
+  }
+  return `${got}/${total}`;
+}
+function pathText() {
+  const bits = ['Мир'];
+  if (state.city) bits.push(TREE[state.country].cities[state.city].name);
+  if (state.street) bits.push(currentStreet().name);
+  if (state.bar) bits.push(findBar(state.bar).name);
+  return bits.join(' → ');
+}
+function currentStreet() {
+  return TREE[state.country].cities[state.city].streets[state.street];
+}
+function pts(pairs) {
+  return pairs.map(([x, y]) => `${x},${y}`).join(' ');
+}
+function project(frame, lon, lat, width, height) {
+  const x = (lon - frame.west) / (frame.east - frame.west) * width;
+  const y = (frame.north - lat) / (frame.north - frame.south) * height;
+  return [Number(x.toFixed(1)), Number(y.toFixed(1))];
+}
+const REGION_FRAME = { west: 21.6, east: 40.8, south: 50.2, north: 61.15 };
+const REGION_VB = [100, 100.5];
+function rp(lon, lat) { return project(REGION_FRAME, lon, lat, REGION_VB[0], REGION_VB[1]); }
+function sheet(points, cls) {
+  return `<polygon points="${pts(points)}" class="${cls}" />`;
+}
+function land(points, cls, act, id, name) {
+  const idAttr = id ? ` data-id="${esc(id)}"` : '';
+  const nameAttr = name ? ` data-name="${esc(name)}"` : '';
+  return `<polygon points="${pts(points)}" class="${cls}" data-act="${act}"${idAttr}${nameAttr} />`;
+}
+function ring(coords) {
+  return coords.map(([lon, lat]) => rp(lon, lat));
+}
+function regionCity(lon, lat, name, kind, act, id, score, place) {
+  const [x, y] = rp(lon, lat);
+  const bright = kind === 'bright';
+  let tx = x;
+  let ty = y - 3.1;
+  let anchor = 'middle';
+  if (place === 'below') ty = y + 4.6;
+  if (place === 'left') { tx = x - 2.4; ty = y + 1.2; anchor = 'end'; }
+  if (place === 'right') { tx = x + 2.4; ty = y + 1.2; anchor = 'start'; }
+  const sx = place === 'left' || place === 'right' ? tx : x;
+  const sy = place === 'below' ? y + 7.6 : y + 4.8;
+  const fill = bright ? '#79f6ff' : '#5c5868';
+  const idAttr = id ? ` data-id="${esc(id)}"` : '';
+  const scoreSvg = score
+    ? `<text x="${sx.toFixed(1)}" y="${sy.toFixed(1)}" text-anchor="${anchor}" fill="#ffe56a" font-size="2.7">${esc(score)}</text>`
+    : '';
+  return `<g data-act="${act}"${idAttr} data-name="${esc(name)}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.4" fill="transparent" /><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${bright ? 1.7 : 1.0}" class="${bright ? 'bright' : 'later'} mark" /><text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="${anchor}" fill="${fill}" font-size="3.5">${esc(name)}</text>${scoreSvg}</g>`;
+}
+function regionMap() {
+  const belarus = ring([
+    [23.175, 52.287], [23.605, 51.518], [30.545, 51.265], [31.763, 52.101],
+    [32.710, 53.371], [30.456, 55.787], [28.118, 56.146], [26.594, 55.668]
+  ]);
+  const poland = ring([[21.6, 51.9], [23.175, 52.287], [24.91, 54.0], [21.6, 54.0]]);
+  const lithuania = ring([[21.6, 54.0], [24.91, 54.0], [26.594, 55.668], [25.2, 56.05], [21.6, 56.05]]);
+  const latvia = ring([[21.6, 56.05], [25.2, 56.05], [26.594, 55.668], [28.118, 56.146], [27.6, 57.6], [21.6, 57.6]]);
+  const estonia = ring([[21.6, 57.6], [27.6, 57.6], [28.2, 59.5], [21.6, 59.5]]);
+  const ukraine = ring([[21.6, 50.2], [34.2, 50.2], [31.763, 52.101], [30.545, 51.265], [23.605, 51.518], [23.175, 52.287], [21.6, 51.9]]);
+  const label = (lon, lat, name) => {
+    const [x, y] = rp(lon, lat);
+    return `<text x="${x}" y="${y}" fill="#3e3c48" font-size="2.3">${name}</text>`;
+  };
+  const playable = [
+    ['minsk', 'Минск', 27.562, 53.902, 'above'],
+    ['vitebsk', 'Витебск', 30.207, 55.193, 'above'],
+    ['moscow', 'Москва', 37.617, 55.751, 'above']
+  ];
+  const later = [
+    ['Могилёв', 30.345, 53.917, 'right'],
+    ['Гомель', 30.975, 52.434, 'below'],
+    ['Смоленск', 32.045, 54.783, 'right'],
+    ['Ленинград', 30.314, 59.939, 'below']
+  ];
+  const body = [
+    sheet(ring([[21.6, 50.2], [40.8, 50.2], [40.8, 61.15], [21.6, 61.15]]), 'quiet'),
+    sheet(poland, 'ghost'),
+    sheet(lithuania, 'ghost'),
+    sheet(latvia, 'ghost'),
+    sheet(estonia, 'ghost'),
+    sheet(ukraine, 'ghost'),
+    sheet(belarus, 'quiet'),
+    label(22.4, 53.0, 'Польша'),
+    label(22.5, 55.0, 'Литва'),
+    label(23.0, 56.9, 'Латвия'),
+    label(23.4, 58.5, 'Эстония'),
+    label(26.0, 50.85, 'Украина'),
+    label(24.7, 55.2, 'Беларусь'),
+    label(36.4, 58.6, 'Россия'),
+    ...later.map(([name, lon, lat, place]) => regionCity(lon, lat, name, 'later', 'later', '', '', place)),
+    ...playable.map(([id, name, lon, lat, place]) => regionCity(lon, lat, name, 'bright', 'city', id, cityScore(id), place))
+  ].join('');
+  return `<svg class="mapsvg" viewBox="0 0 ${REGION_VB[0]} ${REGION_VB[1]}">${body}</svg>`;
+}
+function cityMap(id) {
+  if (id === 'minsk') {
+    const shape = [[0, 48], [8, 28], [28, 12], [55, 6], [78, 10], [100, 34], [96, 58], [74, 86], [42, 100], [16, 84], [2, 64]];
+    return `<svg class="mapsvg" viewBox="0 0 100 64">${land(shape, 'dim', 'dim', '', 'контур')}<line x1="46" y1="30" x2="32" y2="22" class="road bright" stroke-width="2.2" data-act="street" data-id="zybitskaya" /><text x="28" y="18" fill="#79f6ff" font-size="4">Зыбицкая</text><line x1="18" y1="40" x2="28" y2="46" class="road dim" stroke-width="1.2" data-act="dim" data-name="Немига" /><text x="10" y="40" fill="#6d6878" font-size="3.2">Немига</text></svg>`;
+  }
+  if (id === 'vitebsk') {
+    const shape = [[6, 42], [10, 18], [34, 6], [62, 12], [90, 36], [96, 58], [70, 92], [36, 100], [12, 74]];
+    return `<svg class="mapsvg" viewBox="0 0 100 100">${land(shape, 'dim', 'dim', '', 'контур')}<line x1="54" y1="28" x2="54" y2="70" class="road bright" stroke-width="2.4" data-act="street" data-id="suvorova" /><text x="58" y="46" fill="#79f6ff" font-size="4.5">Суворова</text><line x1="22" y1="62" x2="40" y2="78" class="road dim" stroke-width="1.2" data-act="dim" data-name="Ленина" /><text x="18" y="84" fill="#6d6878" font-size="4">Ленина</text></svg>`;
+  }
+  const shape = [[18, 98], [28, 78], [16, 58], [10, 40], [22, 18], [48, 8], [74, 6], [98, 30], [100, 58], [84, 74], [58, 86], [30, 96]];
+  const zelenograd = [[34, 0], [48, 0], [50, 7], [36, 9]];
+  return `<svg class="mapsvg" viewBox="0 0 100 110">${land(shape, 'dim', 'dim', '', 'контур')}${land(zelenograd, 'dim', 'dim', '', 'Зеленоград')}<circle cx="68" cy="26" r="3.2" class="bright mark" data-act="street" data-id="patriki" /><text x="56" y="22" fill="#79f6ff" font-size="4.2">Патрики</text><line x1="8" y1="48" x2="24" y2="58" class="road dim" stroke-width="1.2" data-act="dim" data-name="Арбат" /><text x="4" y="46" fill="#6d6878" font-size="4">Арбат</text></svg>`;
+}
+function along(a, b, t) {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+}
+function streetMap(id) {
+  if (id === 'zybitskaya') {
+    const nw = [14, 22];
+    const se = [88, 70];
+    const bars = currentStreet().bars.map(([bid, name], i) => {
+      const [x, y] = along(nw, se, 0.12 + i * 0.09);
+      const side = i % 2 === 0 ? -7 : 7;
+      const dx = se[0] - nw[0];
+      const dy = se[1] - nw[1];
+      const len = Math.hypot(dx, dy) || 1;
+      const lx = x + (-dy / len) * side;
+      const ly = y + (dx / len) * side;
+      return `<g data-act="bar" data-id="${esc(bid)}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.6" class="bright mark" /><text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" fill="#79f6ff" font-size="3.5">${esc(name)}</text></g>`;
+    }).join('');
+    return `<svg class="mapsvg" viewBox="0 0 100 84"><line x1="${nw[0]}" y1="${nw[1]}" x2="${se[0]}" y2="${se[1]}" class="road dim" stroke-width="1.4" /><text x="6" y="14" fill="#6d6878" font-size="4">северо-запад</text>${bars}</svg>`;
+  }
+  if (id === 'suvorova') {
+    const bars = currentStreet().bars.map(([bid, name], i) => {
+      const y = 16 + i * 20;
+      return `<g data-act="bar" data-id="${esc(bid)}"><circle cx="28" cy="${y}" r="4" class="bright mark" /><text x="36" y="${y + 1.5}" fill="#79f6ff" font-size="5">${esc(name)}</text></g>`;
+    }).join('');
+    return `<svg class="mapsvg" viewBox="0 0 100 100"><line x1="28" y1="8" x2="28" y2="94" class="road dim" stroke-width="1.6" /><text x="34" y="12" fill="#6d6878" font-size="4">север</text>${bars}</svg>`;
+  }
+  const ring = [[42, 16], [84, 38], [58, 86], [16, 58]];
+  const pond = [[50, 34], [64, 48], [50, 64], [36, 50]];
+  const spots = [
+    [0.35, 0, 'kianu'],
+    [0.35, 1, 'bron'],
+    [0.7, 1, 'zojka']
+  ];
+  const byId = Object.fromEntries(currentStreet().bars.map(([bid, name]) => [bid, name]));
+  const bars = spots.map(([t, side, bid]) => {
+    const [x, y] = along(ring[side], ring[(side + 1) % 4], t);
+    return `<g data-act="bar" data-id="${bid}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.4" class="bright mark" /><text x="${(x + 4).toFixed(1)}" y="${(y - 2).toFixed(1)}" fill="#79f6ff" font-size="4">${esc(byId[bid])}</text></g>`;
+  }).join('');
+  const line = ring.map((p, i) => {
+    const q = ring[(i + 1) % 4];
+    return `<line x1="${p[0]}" y1="${p[1]}" x2="${q[0]}" y2="${q[1]}" class="road dim" stroke-width="1.5" />`;
+  }).join('');
+  return `<svg class="mapsvg" viewBox="0 0 100 100">${line}${land(pond, 'water', 'dim', '', 'пруд')}${bars}</svg>`;
+}
+function mapArt() {
+  if (state.bar) return '';
+  if (!state.city) return regionMap();
+  if (!state.street) return cityMap(state.city);
+  return streetMap(state.street);
+}
+function levelButtons(as) {
+  const bar = findBar(state.bar);
+  const row = starsOf(bar);
+  return row.map((stars, index) => {
+    const kind = levelKind(row, index);
+    const mark = kind === 'locked' ? 'закрыт' : kind === 'open' ? 'открыт' : '★'.repeat(stars);
+    if (as === 'row') {
+      return `<button type="button" class="lv ${kind}" data-act="level" data-i="${index}"><span class="num">${index + 1}</span><span>${mark}</span></button>`;
+    }
+    if (as === 'card') {
+      return `<button type="button" class="card ${kind}" data-act="level" data-i="${index}"><span class="big">${index + 1}</span><span>${mark}</span></button>`;
+    }
+    return `<button type="button" class="tag ${kind}" data-act="level" data-i="${index}"><span>${index + 1}</span><span>${mark}</span></button>`;
+  }).join('');
+}
+
+function renderDead(extra) {
+  return `<div class="dead ${extra || ''}"><h1>Персонаж погиб</h1><button type="button" data-act="new-game">Новая игра</button></div>`;
+}
+function hudA() {
+  const back = state.city
+    ? `<button type="button" class="back" data-act="back">назад</button>`
+    : `<span></span>`;
+  return `<header class="top hud-still"><div class="cluster">${back}<div class="where">${esc(scaleName())}</div></div><div class="stam hud-still"><b>${state.stock}/${state.cap}</b><span>${esc(moodName(state.stock, state.cap))}</span></div></header>`;
+}
+function renderA() {
+  if (!state.alive) return renderDead();
+  const body = state.bar ? `<div class="list">${levelButtons('row')}</div>` : mapArt();
+  return `<div class="screen va">${hudA()}<div class="art ${moodClass()}">${body}</div></div>`;
+}
+
+function renderB() {
+  if (!state.alive) return renderDead();
+  const main = state.bar ? `<div class="film">${levelButtons('card')}</div>` : mapArt();
+  const back = state.city
+    ? `<button type="button" class="back" data-act="back">назад</button>`
+    : '';
+  const hud = `<div class="hud-strip hud-still">${back}<div><b>${state.stock}/${state.cap}</b><span>${esc(moodName(state.stock, state.cap))} · ${esc(pathText())}</span></div></div>`;
+  return `<div class="screen vb">${hud}<div class="body"><div class="main"><div class="art ${moodClass()}">${main}</div></div></div></div>`;
+}
+
+function renderC() {
+  if (!state.alive) return renderDead('vc');
+  const title = state.bar ? findBar(state.bar).name : state.street ? currentStreet().name : state.city ? TREE[state.country].cities[state.city].name : 'МИР';
+  const inner = state.bar ? `<div class="board">${levelButtons('tag')}</div>` : mapArt();
+  const hang = state.city ? `<button type="button" class="hang" data-act="back">назад к вывеске</button>` : '';
+  return `<div class="screen vc"><div class="marquee">${esc(title)}</div><div class="window art ${moodClass()}"><div class="${state.bar ? 'board' : 'grid'}">${inner}</div></div>${hang}<div class="tube hud-still"><span>${state.stock}/${state.cap}</span><span>${esc(moodName(state.stock, state.cap))}</span></div></div>`;
+}
+
+function render() {
+  const html = variant === 'A' ? renderA() : variant === 'B' ? renderB() : renderC();
+  document.getElementById('phone').innerHTML = html;
+  const life = state.alive ? `${state.stock}/${state.cap} ${moodName(state.stock, state.cap)}` : 'погиб';
+  document.getElementById('state').textContent = `${VARIANT_NAME[variant]}. ${pathText()}. ${life}. ${state.notice}`;
+  document.getElementById('vlabel').textContent = `${variant} (${VARIANT_NAME[variant]})`;
+}
+
+function enterCity(id) {
+  const found = cityOf(id);
+  state.country = found.countryId;
+  state.city = id;
+  state.street = state.bar = null;
+  state.notice = 'Контур города. Яркая улица — штрих на силуэте.';
+}
+function enterStreet(id) {
+  state.street = id;
+  state.bar = null;
+  state.notice = 'Контур улицы. Бары стоят на нём по порядку, не списком.';
+}
+function enterBar(id) {
+  state.bar = id;
+  const bar = findBar(id);
+  state.notice = `${bar.name}: ${bar.levels} уровней. Закрытый не начинается, открытый и пройденный ведут на экран уровня.`;
+}
+function back() {
+  if (state.bar) state.bar = null;
+  else if (state.street) state.street = null;
+  else if (state.city) goWorld();
+  state.notice = 'Шаг назад по масштабам.';
+}
+function tapLevel(index) {
+  const bar = findBar(state.bar);
+  const row = starsOf(bar);
+  const kind = levelKind(row, index);
+  if (kind === 'locked') {
+    state.notice = `Уровень ${index + 1} закрыт. Его откроет победа в предыдущем.`;
+    return;
+  }
+  const stars = kind === 'cleared' ? `, лучший результат ${row[index]}` : ', ещё без звёзд';
+  state.notice = `Уровень ${index + 1} ${kind === 'open' ? 'открыт' : 'пройден'}${stars}. Отсюда начался бы экран уровня.`;
+}
+function setMood(stock, cap) {
+  if (!state.alive) {
+    state.notice = 'Погибшая игра не продолжается. Живым делает только «Новая игра».';
+    return;
+  }
+  state.stock = stock;
+  state.cap = cap;
+  state.notice = `Индикатор ${stock}/${cap}, состояние «${moodName(stock, cap)}».`;
+}
+function preset(name) {
+  if (name === 'dead') {
+    state.alive = false;
+    state.stock = 0;
+    state.notice = 'Сохранённая гибель. На экране только «Новая игра».';
+    return;
+  }
+  if (name === 'fresh') {
+    newGame();
+    state.notice = 'Прототип сбросил прогресс, как новая игра, и открыл мир.';
+    return;
+  }
+  state.alive = true;
+  resetProgress();
+  if (name === 'mid') {
+    state.stock = 40;
+    state.cap = 120;
+    state.stars.under = [3, 2, 1, null, null, null, null, null];
+    state.stars.zojka = [3, 3, 2, 2, 1, 1].concat(blank(14));
+    state.country = 'by';
+    state.city = 'minsk';
+    state.street = 'zybitskaya';
+    state.bar = 'under';
+    state.notice = 'Under: 3, 2 и 1 звезда, четвёртый открыт, остальные закрыты. Запас 40/120, «Пьян».';
+    return;
+  }
+  state.stock = 123;
+  state.cap = 123;
+  state.stars.under = [3, 3, 3, 3, 3, 3, 3, 3];
+  state.country = 'by';
+  state.city = 'minsk';
+  state.street = 'zybitskaya';
+  state.bar = 'under';
+  state.notice = 'Under пройден на три звезды каждый. Награда 3 уже в потолке: 123/123, «Трезв».';
+}
+
+function onAct(el) {
+  const act = el.dataset.act;
+  if (act === 'new-game') newGame();
+  else if (act === 'dim') state.notice = `«${el.dataset.name}» тусклая. Тап не открывает масштаб.`;
+  else if (act === 'later') state.notice = `«${el.dataset.name}» пока без уровней. Сюда добавим их позже.`;
+  else if (act === 'city') enterCity(el.dataset.id);
+  else if (act === 'street') enterStreet(el.dataset.id);
+  else if (act === 'bar') enterBar(el.dataset.id);
+  else if (act === 'back') back();
+  else if (act === 'level') tapLevel(Number(el.dataset.i));
+  render();
+}
+
+function setVariant(next) {
+  variant = next;
+  const url = new URL(location.href);
+  url.searchParams.set('variant', next);
+  history.replaceState(null, '', url);
+  state.notice = `Вариант ${next}: ${VARIANT_NAME[next]}. Место и прогресс те же.`;
+  render();
+}
+function cycle(step) {
+  const i = VARIANTS.indexOf(variant);
+  setVariant(VARIANTS[(i + step + VARIANTS.length) % VARIANTS.length]);
+}
+
+document.getElementById('phone').addEventListener('click', (e) => {
+  const el = e.target.closest('[data-act]');
+  if (el) onAct(el);
+});
+document.getElementById('chrome').addEventListener('click', (e) => {
+  const el = e.target.closest('button');
+  if (!el) return;
+  if (el.dataset.preset) preset(el.dataset.preset);
+  if (el.dataset.mood) {
+    const [stock, cap] = el.dataset.mood.split(',').map(Number);
+    setMood(stock, cap);
+  }
+  render();
+});
+document.getElementById('prev').addEventListener('click', () => cycle(-1));
+document.getElementById('next').addEventListener('click', () => cycle(1));
+document.addEventListener('keydown', (e) => {
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  if (e.key === 'ArrowRight') cycle(1);
+  if (e.key === 'ArrowLeft') cycle(-1);
+});
+
+const params = new URLSearchParams(location.search);
+const initial = params.get('variant');
+if (initial === 'A' || initial === 'B' || initial === 'C') variant = initial;
+const initialPreset = params.get('preset');
+if (initialPreset) preset(initialPreset);
+const screen = params.get('screen');
+const screens = {
+  world: () => { goWorld(); },
+  minsk: () => { state.country = 'by'; state.city = 'minsk'; },
+  vitebsk: () => { state.country = 'by'; state.city = 'vitebsk'; },
+  moscow: () => { state.country = 'ru'; state.city = 'moscow'; },
+  zybitskaya: () => { state.country = 'by'; state.city = 'minsk'; state.street = 'zybitskaya'; },
+  suvorova: () => { state.country = 'by'; state.city = 'vitebsk'; state.street = 'suvorova'; },
+  patriki: () => { state.country = 'ru'; state.city = 'moscow'; state.street = 'patriki'; }
+};
+if (screens[screen]) {
+  state.alive = true;
+  state.city = state.street = state.bar = null;
+  screens[screen]();
+  state.notice = 'Контур этого масштаба. Яркое открывается, тусклое остаётся на силуэте.';
+}
+const mood = params.get('mood');
+if (mood && mood.includes(',')) {
+  const [stock, cap] = mood.split(',').map(Number);
+  setMood(stock, cap);
+}
+render();
+</script>
+</body>
+</html>
