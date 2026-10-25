@@ -1,7 +1,7 @@
 # Перезапуск и незавершённый уровень
 
 Type: grilling
-Status: open
+Status: claimed
 Blocked by: 01, 05, 06, 07
 
 ## Question
