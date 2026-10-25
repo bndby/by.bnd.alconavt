@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Прототип: экран карточки напитка</title>
+<!--
+  PROTOTYPE, not production. Throwaway.
+  Accepted: Лист. Рисунок, культура, история, факты. После выхода из уровня карточка недоступна.
+  B and C stay on the switcher as rejected takes.
+  Прилавок общий: имя под собранной бутылкой открывает карточку, тап по стеклу нет.
+  Нижние белые панели в игру не входят.
+-->
+<style>
+  :root {
+    --bg: #100e14;
+    --ink: #f6f1e8;
+    --dim: #6d6878;
+    --cyan: #79f6ff;
+    --pink: #ff5ad4;
+    --gold: #ffe56a;
+    --line: #3a3544;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: #1a1720;
+    color: var(--ink);
+    font-family: "Courier New", ui-monospace, monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 16px 168px;
+  }
+  .ask { max-width: 640px; margin: 0; line-height: 1.45; font-size: 14px; }
+  .ask strong { color: var(--cyan); }
+  .phone {
+    width: 390px;
+    height: 760px;
+    background: var(--bg);
+    border: 10px solid #0a090d;
+    border-radius: 28px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 20px 60px #000a;
+    flex-shrink: 0;
+  }
+  .screen { height: 100%; display: flex; flex-direction: column; min-height: 0; position: relative; }
+  button { font: inherit; color: inherit; background: transparent; border: 2px solid var(--line); cursor: pointer; }
+  .hud, .foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 12px 8px;
+    flex-shrink: 0;
+  }
+  .where { flex: 1; min-width: 0; font-size: 13px; letter-spacing: 0.04em; line-height: 1.25; }
+  .back { border-color: var(--pink); color: var(--pink); padding: 8px 10px; }
+  .art {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(circle at 50% 120%, #2a1830 0%, transparent 55%), #100e14;
+  }
+  .sign {
+    position: absolute;
+    top: 86px;
+    left: 16px;
+    color: var(--pink);
+    letter-spacing: 0.18em;
+    text-shadow: 0 0 10px var(--pink);
+    font-size: 22px;
+    animation: pulse 2.6s ease-in-out infinite;
+  }
+  @keyframes pulse { 50% { opacity: 0.45; filter: brightness(1.5); } }
+  .play { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; min-height: 0; }
+  .rack { flex: 1; display: flex; align-items: flex-end; padding: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: 100%; }
+  .cell { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+  .glass {
+    width: 100%;
+    min-height: 132px;
+    padding: 8px 6px;
+    background: #16141c;
+    border-color: #6a6478;
+    display: flex;
+    align-items: flex-end;
+  }
+  .glass.sel { border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan); }
+  .slots { display: flex; flex-direction: column-reverse; gap: 4px; width: 100%; }
+  .slot { height: 28px; border: 2px solid #3a3544; background: transparent; }
+  .name, .quiet {
+    min-height: 36px;
+    width: 100%;
+    font-size: 11px;
+    line-height: 1.2;
+    text-align: center;
+    padding: 4px;
+  }
+  .name { border-color: var(--gold); color: var(--gold); }
+  .quiet { color: var(--dim); border-color: transparent; }
+  .note {
+    color: var(--dim);
+    font-size: 12px;
+    line-height: 1.35;
+    padding: 0 12px 12px;
+  }
+  .sheet, .poster, .page, .film, .world, .album {
+    position: relative;
+    z-index: 1;
+    height: 100%;
+    min-height: 0;
+    background: #100e14;
+    display: flex;
+    flex-direction: column;
+  }
+  .sheet { overflow: auto; padding: 12px 14px 20px; gap: 10px; }
+  .sheet h1, .poster h1, .page h1 { margin: 0; font-size: 22px; font-weight: normal; }
+  .sheet h2, .page h2 { margin: 0 0 4px; font-size: 13px; color: var(--cyan); font-weight: normal; letter-spacing: 0.06em; }
+  .sheet section { border-top: 2px solid var(--line); padding-top: 8px; }
+  .sheet p, .page p, .album p, .film p { margin: 0; line-height: 1.4; font-size: 14px; }
+  .meta { color: var(--gold); }
+  .hero { display: flex; justify-content: center; padding: 8px 0 4px; }
+  .sheet ul, .chips { margin: 0; padding-left: 18px; }
+  .sheet li { margin: 4px 0; line-height: 1.35; }
+
+  .poster { padding: 0; overflow: auto; }
+  .poster-top { display: flex; flex: none; align-items: stretch; }
+  .poster-art {
+    width: 42%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0c0b10;
+    padding: 16px 0;
+  }
+  .poster-copy {
+    width: 58%;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .poster-copy .back { align-self: flex-start; }
+  .abv-stamp {
+    align-self: flex-start;
+    border: 2px solid var(--gold);
+    color: var(--gold);
+    padding: 4px 6px;
+    font-size: 13px;
+  }
+  .lead { font-size: 15px; line-height: 1.3; margin: 0; }
+  .strip, .chips {
+    border-top: 2px solid var(--line);
+    margin: 0;
+    padding: 10px 12px;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+  .chips { list-style: none; padding-left: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .chips li { border-left: 3px solid var(--pink); padding-left: 8px; }
+
+  .page { padding: 12px 14px 16px; gap: 8px; overflow: auto; background:
+    repeating-linear-gradient(#100e14, #100e14 27px, #241c28 28px); }
+  .page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .stamp { flex: 0 0 auto; }
+  .body { font-size: 16px; line-height: 1.45; }
+  .margin {
+    border-left: 2px solid var(--pink);
+    padding-left: 10px;
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .margin p { color: var(--dim); }
+  .footnotes { margin-top: auto; color: var(--dim); font-size: 12px; line-height: 1.4; }
+
+  .film { padding: 12px; gap: 10px; }
+  .levels { display: flex; flex-direction: column; gap: 8px; }
+  .levels.row { flex-direction: row; }
+  .levels button, .shelf button, .album button, .world button {
+    padding: 10px;
+    text-align: left;
+  }
+  .levels.row button { flex: 1; text-align: center; min-height: 72px; }
+  .locked { color: var(--dim); }
+  .here { border-color: var(--cyan); color: var(--cyan); }
+  .shelf { display: flex; flex-direction: column; gap: 8px; margin-top: auto; }
+  .shelf h2, .album h2, .world h2 { margin: 0; font-weight: normal; color: var(--gold); font-size: 14px; }
+  .plates { display: flex; flex-direction: column; gap: 8px; }
+  .plates button { display: flex; align-items: center; gap: 10px; font-size: 16px; }
+  .dot { width: 18px; height: 28px; flex: 0 0 auto; box-shadow: 0 0 8px currentColor; }
+
+  .world { padding: 16px; gap: 14px; }
+  .cities { display: flex; justify-content: space-between; padding: 28px 12px; }
+  .city { width: 72px; text-align: center; border: 0; color: var(--dim); }
+  .city b { display: block; width: 10px; height: 10px; margin: 0 auto 8px; background: currentColor; box-shadow: 0 0 8px currentColor; }
+  .city.bright { color: var(--cyan); }
+  .album { padding: 12px; gap: 10px; overflow: auto; }
+  .album button { display: flex; gap: 10px; align-items: center; }
+
+  .pix { display: flex; flex-direction: column; width: max-content; }
+  .prow { display: flex; }
+  .pix i { display: block; }
+  .rim { background: #5c5668; }
+
+  .state { max-width: 640px; width: 100%; margin: 0; font-size: 13px; line-height: 1.4; }
+  .state div { display: grid; grid-template-columns: 180px 1fr; gap: 6px; }
+  .state dt { color: var(--dim); }
+  .state dd { margin: 0; }
+  .chrome, .switcher {
+    position: fixed;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    padding: 6px 8px;
+    background: #0c0b10;
+    border: 2px solid #fff;
+    z-index: 5;
+  }
+  .chrome { left: 12px; right: 12px; bottom: 64px; flex-wrap: wrap; justify-content: center; border-radius: 16px; }
+  .switcher { left: 50%; transform: translateX(-50%); bottom: 14px; border-radius: 999px; }
+  .chrome span, .switcher span { white-space: nowrap; font-size: 12px; padding: 0 6px; }
+  .chrome button, .switcher button {
+    border-radius: 999px;
+    padding: 6px 8px;
+    font-size: 12px;
+    white-space: nowrap;
+    border-color: #fff;
+    color: #fff;
+  }
+</style>
+</head>
+<body>
+  <p class="ask">Принят <strong>лист</strong>. Рисунок бутылки, культура употребления, история и факты. Карточку открывает имя под собранной бутылкой, после выхода из уровня её не открыть. Полка и альбом оставлены на переключателе как отклонённые. Белые панели снизу в игру не входят.</p>
+  <div class="phone" id="phone"></div>
+  <dl class="state" id="state"></dl>
+  <div class="chrome">
+    <span>прототип</span>
+    <button type="button" id="break">Разобрать собранные</button>
+    <button type="button" id="fix">Собрать снова</button>
+    <button type="button" id="reset">Сбросить путь</button>
+  </div>
+  <div class="switcher">
+    <button type="button" id="prev" aria-label="Предыдущий вариант">←</button>
+    <span id="vlabel"></span>
+    <button type="button" id="next" aria-label="Следующий вариант">→</button>
+  </div>
+<script>
+const VARIANTS = ['A', 'B', 'C'];
+const VARIANT_NAME = { A: 'Лист', B: 'Полка', C: 'Альбом' };
+const MASK = [
+  '00022000',
+  '00021000',
+  '00021000',
+  '00222200',
+  '02111120',
+  '02111120',
+  '02111120',
+  '02111120',
+  '02111120',
+  '02111120',
+  '02111120',
+  '00222200'
+];
+const DRINKS = {
+  guinness: {
+    name: 'Guinness Draught',
+    abv: '4,2%',
+    color: '#8a2340',
+    glass: 'Чистый сухой бокал. Налив в два приёма под 45°.',
+    food: 'Пирог со стейком и чеддером.',
+    history: 'В 1759 году Артур Гиннесс арендовал пивоварню St. James’s Gate на девять тысяч лет. Guinness Draught впервые сварен в 1959-м, к двухсотлетию этой аренды.',
+    facts: [
+      'В банке виджет с азотом, он и даёт кремовую шапку.',
+      'Дом называет напиток подходящим для веганов.'
+    ]
+  },
+  aperol: {
+    name: 'Aperol',
+    abv: '11%',
+    color: '#ff6a1a',
+    glass: 'Большой винный бокал со льдом и долькой апельсина.',
+    food: 'Чичетти: кростини, оливки, выдержанные сыры.',
+    history: 'В 1919 году братья Барбьери выпустили аперитив после семи лет проб. Сначала его пили в Падуе и Венеции. Спритц дом относит к 1950-м.',
+    facts: [
+      'Спритц: 3 доли просекко, 2 доли Aperol, 1 доля содовой.',
+      'Рецепт дом называет секретным и неизменным.'
+    ]
+  },
+  chartreuse: {
+    name: 'Chartreuse Verte',
+    abv: '55%',
+    color: '#c6e04a',
+    glass: 'Дижестив, охлаждённый до 12–13 °C или со льдом.',
+    food: 'Отдельных блюд дом не называет. С XIX века ликёр кладут в сладкое и солёное.',
+    history: 'В 1840 году из растительного эликсира сделали ликёр здоровья. Отец Гарнье дал ему имя Chartreuse Verte и в 1852 году зарегистрировал марку.',
+    facts: [
+      'В составе 130 растений. Формулу знают два человека.',
+      'Бутылки дома от 3 до 300 сл, на горле печать Гранд-Шартрёз.'
+    ]
+  }
+};
+
+let variant = 'A';
+let state = fresh();
+
+function fresh() {
+  return {
+    place: 'level',
+    drink: null,
+    origin: 'level',
+    seen: [],
+    selected: null,
+    bottles: [
+      { drink: 'guinness', n: 3 },
+      { drink: 'aperol', n: 3 },
+      { drink: 'chartreuse', n: 2 },
+      { drink: null, n: 0 }
+    ],
+    notice: ''
+  };
+}
+function esc(value) {
+  return String(value).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+}
+function pixels(color, cell) {
+  const rows = MASK.map((row) => {
+    const cells = [...row].map((ch) => {
+      if (ch === '0') return `<i style="width:${cell}px;height:${cell}px"></i>`;
+      if (ch === '2') return `<i class="rim" style="width:${cell}px;height:${cell}px"></i>`;
+      return `<i style="width:${cell}px;height:${cell}px;background:${color};box-shadow:0 0 ${Math.max(4, cell / 2)}px ${color}"></i>`;
+    }).join('');
+    return `<span class="prow">${cells}</span>`;
+  }).join('');
+  return `<div class="pix" aria-hidden="true">${rows}</div>`;
+}
+function drinkById(id) { return DRINKS[id]; }
+function full(bottle) { return bottle.drink && bottle.n === 3; }
+function seenNames() {
+  return state.seen.length ? state.seen.map((id) => DRINKS[id].name).join(', ') : 'нет';
+}
+function builtNames() {
+  const names = state.bottles.filter(full).map((bottle) => DRINKS[bottle.drink].name);
+  return names.length ? names.join(', ') : 'нет';
+}
+
+function levelHtml() {
+  const cells = state.bottles.map((bottle, index) => {
+    const slots = [2, 1, 0].map((step) => {
+      const on = bottle.n > step && bottle.drink;
+      const color = on ? DRINKS[bottle.drink].color : 'transparent';
+      const glow = on ? `box-shadow:0 0 6px ${color}` : '';
+      return `<i class="slot" style="background:${color};${glow}"></i>`;
+    }).join('');
+    const sel = state.selected === index ? ' sel' : '';
+    const name = full(bottle)
+      ? `<button type="button" class="name" data-act="open" data-drink="${bottle.drink}" data-origin="level">${esc(DRINKS[bottle.drink].name)}</button>`
+      : '<span class="quiet">·</span>';
+    return `<div class="cell"><button type="button" class="glass${sel}" data-act="glass" data-i="${index}"><span class="slots">${slots}</span></button>${name}</div>`;
+  }).join('');
+  return `<div class="art"><div class="sign">UNDER</div></div><div class="play">
+    <div class="hud"><button type="button" class="back" data-act="back">Назад</button><div class="where">Зыбицкая · Under · 3</div></div>
+    <div class="rack"><div class="grid">${cells}</div></div>
+    <p class="note">${esc(state.notice)}</p>
+  </div>`;
+}
+function factsHtml(drink, tag) {
+  return drink.facts.map((fact) => `<${tag}>${esc(fact)}</${tag}>`).join('');
+}
+function cardA(drink) {
+  return `<div class="sheet">
+    <div class="hud"><button type="button" class="back" data-act="back">Назад</button><div class="where">Карточка</div></div>
+    <div class="hero">${pixels(drink.color, 11)}</div>
+    <h1>${esc(drink.name)}</h1>
+    <p class="meta">Крепость ${esc(drink.abv)}</p>
+    <section><h2>Культура употребления</h2><p><b>Посуда.</b> ${esc(drink.glass)}</p><p><b>Блюда.</b> ${esc(drink.food)}</p></section>
+    <section><h2>История</h2><p>${esc(drink.history)}</p></section>
+    <section><h2>Факты</h2><ul>${factsHtml(drink, 'li')}</ul></section>
+  </div>`;
+}
+function cardB(drink) {
+  return `<div class="poster">
+    <div class="poster-top">
+      <div class="poster-art">${pixels(drink.color, 12)}</div>
+      <div class="poster-copy">
+        <button type="button" class="back" data-act="back">Назад</button>
+        <span class="abv-stamp">${esc(drink.abv)}</span>
+        <h1>${esc(drink.name)}</h1>
+        <p class="lead">${esc(drink.glass)}</p>
+        <p class="lead">${esc(drink.food)}</p>
+      </div>
+    </div>
+    <p class="strip">${esc(drink.history)}</p>
+    <ul class="chips">${factsHtml(drink, 'li')}</ul>
+  </div>`;
+}
+function cardC(drink) {
+  return `<div class="page">
+    <div class="page-head">
+      <button type="button" class="back" data-act="back">Назад</button>
+      <div class="stamp">${pixels(drink.color, 5)}</div>
+    </div>
+    <h1>${esc(drink.name)}</h1>
+    <p class="body">${esc(drink.history)}</p>
+    <div class="margin">
+      <div><h2>Посуда</h2><p>${esc(drink.glass)}</p></div>
+      <div><h2>Блюда</h2><p>${esc(drink.food)}</p></div>
+      <div><h2>Крепость</h2><p>${esc(drink.abv)}</p></div>
+    </div>
+    <p class="footnotes">${drink.facts.map(esc).join(' ')}</p>
+  </div>`;
+}
+function levelsHtml(row) {
+  const items = [
+    ['1', 'пройден ★★★', 'locked', ''],
+    ['2', 'пройден ★', 'locked', ''],
+    ['3', 'этот', 'here', 'data-act="resume"'],
+    ['4', 'закрыт', 'locked', '']
+  ];
+  return `<div class="levels${row ? ' row' : ''}">${items.map(([n, label, cls, act]) =>
+    `<button type="button" class="${cls}" ${act}>${n}<br>${label}</button>`).join('')}</div>`;
+}
+function shelfHtml() {
+  const plates = state.seen.map((id) => {
+    const drink = DRINKS[id];
+    return `<button type="button" data-act="open" data-drink="${id}" data-origin="film"><i class="dot" style="background:${drink.color};color:${drink.color}"></i>${esc(drink.name)}</button>`;
+  }).join('');
+  const body = plates || '<p>Пусто. Сюда попадает напиток, карточку которого открыли в этом баре.</p>';
+  return `<div class="shelf"><h2>Уже видели в Under</h2><div class="plates">${body}</div></div>`;
+}
+function filmHtml() {
+  if (variant === 'B') {
+    return `<div class="film">
+      <div class="hud"><button type="button" class="back" data-act="back">Назад</button><div class="where">Under · уровни</div></div>
+      ${levelsHtml(true)}
+      ${shelfHtml()}
+      ${state.notice ? `<p class="note">${esc(state.notice)}</p>` : ''}
+    </div>`;
+  }
+  const line = variant === 'C'
+    ? 'Открытые карточки на плёнке не лежат. Назад ведёт на мир.'
+    : 'Открытые карточки здесь не остаются. Снова прочитать можно только с собранной бутылки на уровне.';
+  return `<div class="film">
+    <div class="hud"><button type="button" class="back" data-act="back">Назад</button><div class="where">Under · уровни</div></div>
+    ${levelsHtml(false)}
+    <p class="note">${line}</p>
+    ${state.notice ? `<p class="note">${esc(state.notice)}</p>` : ''}
+  </div>`;
+}
+function worldHtml() {
+  return `<div class="world">
+    <div class="hud"><button type="button" class="back" data-act="back">Назад</button><div class="where">Мир</div></div>
+    <div class="cities">
+      <div class="city bright"><b></b>Минск</div>
+      <div class="city"><b></b>Витебск</div>
+      <div class="city"><b></b>Москва</div>
+    </div>
+    <button type="button" data-act="album">Альбом</button>
+    <p class="note">Город и улица здесь свёрнуты: с плёнки Назад сразу открывает мир. В игре между ними остались бы свои шаги.</p>
+  </div>`;
+}
+function albumHtml() {
+  const rows = state.seen.map((id) => {
+    const drink = DRINKS[id];
+    return `<button type="button" data-act="open" data-drink="${id}" data-origin="album">${pixels(drink.color, 4)}<span>${esc(drink.name)}</span></button>`;
+  }).join('');
+  const body = rows || '<p>Пусто. Карточка попадает сюда в момент, когда её открыли, и остаётся после выхода из уровня.</p>';
+  return `<div class="album">
+    <div class="hud"><button type="button" class="back" data-act="back">Назад</button><div class="where">Альбом</div></div>
+    <h2>Открытые карточки</h2>
+    ${body}
+  </div>`;
+}
+function screenHtml() {
+  if (state.place === 'card') {
+    const drink = drinkById(state.drink);
+    if (variant === 'B') return cardB(drink);
+    if (variant === 'C') return cardC(drink);
+    return cardA(drink);
+  }
+  if (state.place === 'film') return filmHtml();
+  if (state.place === 'world') return worldHtml();
+  if (state.place === 'album') return albumHtml();
+  return levelHtml();
+}
+function memoryLine() {
+  if (variant === 'B') return 'уже открытая карточка остаётся на плёнке этого бара';
+  if (variant === 'C') return 'уже открытая карточка остаётся в альбоме на мире';
+  return 'после выхода карточка недоступна, пока напиток снова не собран на уровне';
+}
+function placeLine() {
+  return {
+    level: 'уровень',
+    card: 'карточка',
+    film: 'плёнка уровней',
+    world: 'мир',
+    album: 'альбом'
+  }[state.place];
+}
+function renderState() {
+  const rows = [
+    ['Вариант', `${variant} · ${VARIANT_NAME[variant]}`],
+    ['Экран', placeLine()],
+    ['Напиток карточки', state.drink ? DRINKS[state.drink].name : 'нет'],
+    ['Откуда открыта', state.place === 'card' ? placeLineOrigin() : '—'],
+    ['Уже открыты', seenNames()],
+    ['Собраны сейчас', builtNames()],
+    ['После выхода из уровня', memoryLine()],
+    ['Последний жест', state.notice || '—']
+  ];
+  document.getElementById('state').innerHTML = rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('');
+}
+function placeLineOrigin() {
+  return { level: 'имя на уровне', film: 'плёнка бара', album: 'альбом' }[state.origin] || '—';
+}
+function render() {
+  document.getElementById('phone').innerHTML = `<div class="screen">${screenHtml()}</div>`;
+  document.getElementById('vlabel').textContent = `${variant} (${VARIANT_NAME[variant]})`;
+  renderState();
+}
+function openCard(id, origin) {
+  if (!state.seen.includes(id)) state.seen.push(id);
+  state.drink = id;
+  state.origin = origin;
+  state.place = 'card';
+  state.notice = '';
+}
+function back() {
+  state.notice = '';
+  if (state.place === 'card') {
+    state.place = state.origin;
+    state.drink = null;
+    return;
+  }
+  if (state.place === 'level') {
+    state.place = 'film';
+    state.selected = null;
+    return;
+  }
+  if (state.place === 'film') {
+    if (variant === 'C') state.place = 'world';
+    else state.notice = 'Дальше была бы улица. Карточек там нет.';
+    return;
+  }
+  if (state.place === 'album') {
+    state.place = 'world';
+    return;
+  }
+  state.notice = 'Дальше мир не идёт.';
+}
+function onPhoneClick(event) {
+  const el = event.target.closest('[data-act]');
+  if (!el) return;
+  const act = el.dataset.act;
+  if (act === 'open') openCard(el.dataset.drink, el.dataset.origin || 'level');
+  else if (act === 'glass') {
+    state.selected = Number(el.dataset.i);
+    state.notice = 'Тап по стеклу выбирает бутылку для перелива и карточку не открывает.';
+  } else if (act === 'back') back();
+  else if (act === 'resume') {
+    state.place = 'level';
+    state.notice = '';
+  } else if (act === 'album') {
+    state.place = 'album';
+    state.notice = '';
+  }
+  render();
+}
+function setVariant(next) {
+  variant = next;
+  state = fresh();
+  const url = new URL(location.href);
+  url.searchParams.set('variant', next);
+  history.replaceState(null, '', url);
+  render();
+}
+function step(dir) {
+  const index = VARIANTS.indexOf(variant);
+  setVariant(VARIANTS[(index + dir + VARIANTS.length) % VARIANTS.length]);
+}
+document.getElementById('phone').addEventListener('click', onPhoneClick);
+document.getElementById('prev').addEventListener('click', () => step(-1));
+document.getElementById('next').addEventListener('click', () => step(1));
+document.getElementById('break').addEventListener('click', () => {
+  state.bottles.forEach((bottle) => { if (full(bottle)) bottle.n = 2; });
+  state.selected = null;
+  state.notice = 'Собранные бутылки разобраны: имени нет, с уровня карточку не открыть.';
+  render();
+});
+document.getElementById('fix').addEventListener('click', () => {
+  state.bottles = fresh().bottles;
+  state.notice = 'Бутылки снова в стартовом виде. Уже открытые карточки этого не стирает.';
+  render();
+});
+document.getElementById('reset').addEventListener('click', () => {
+  state = fresh();
+  render();
+});
+document.addEventListener('keydown', (event) => {
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || (document.activeElement && document.activeElement.isContentEditable)) return;
+  if (event.key === 'ArrowLeft') { event.preventDefault(); step(-1); }
+  if (event.key === 'ArrowRight') { event.preventDefault(); step(1); }
+});
+const params = new URLSearchParams(location.search);
+variant = VARIANTS.includes(params.get('variant')) ? params.get('variant') : 'A';
+setVariant(variant);
+</script>
+</body>
+</html>
