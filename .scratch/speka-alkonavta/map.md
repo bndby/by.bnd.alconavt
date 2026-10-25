@@ -45,6 +45,7 @@ GitHub: https://github.com/bndby/by.bnd.alconavt/issues/1
 - [Масштаб мира и читаемость трёх городов](issues/16-masshtab-mira-i-chitaemost-treh-gorodov.md): снято тем же кропом, города не раздвигаются и дальние куски России на мир не входят.
 - [Экран уровня](issues/10-ekran-urovnya.md): бутылки стоят на прилавке, перелив двумя тапами, имя собранной бутылки под ней. Ветка cursor/ekran-urovnya-7a8a, файл prototype/ekran-urovnya/index.html
 - [Картинка на карточке напитка](issues/15-kartinka-na-kartochke-napitka.md): один пиксельный силуэт бутылки в цвете напитка с тихим свечением того же цвета; на прилавке большая вместимость чуть выше и шире внутри клетки.
+- [Экран карточки напитка](issues/08-ekran-kartochki-napitka.md): лист на уровне — рисунок, культура, история и факты; открывает имя собранной бутылки, после выхода из уровня карточка недоступна. Ветка cursor/ekran-kartochki-napitka-8f3a, файл prototype/ekran-kartochki-napitka/index.html
 
 ## Not yet specified
 
