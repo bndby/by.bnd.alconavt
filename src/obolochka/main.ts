@@ -19,7 +19,7 @@ const zahod = nachatZahod({
   ],
 })
 
-function el<K extends keyof HTMLElementTagNameMap>(
+function sozdat<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   attrs: Record<string, string> = {},
   children: Node[] = [],
@@ -38,19 +38,19 @@ function narisovat() {
     const mesta = []
     const svobodno = snimok.vmestimost - butylka.porciiSnizuVverh.length
     for (let i = 0; i < svobodno; i += 1) {
-      mesta.push(el('span', { class: 'mesto', 'data-mesto': 'svobodno' }))
+      mesta.push(sozdat('span', { class: 'mesto', 'data-mesto': 'svobodno' }))
     }
     for (let i = butylka.porciiSnizuVverh.length - 1; i >= 0; i -= 1) {
       const napitok = butylka.porciiSnizuVverh[i] ?? ''
-      const porciya = el('span', {
+      const porciya = sozdat('span', {
         class: 'porciya',
         'data-napitok': napitok,
       })
       porciya.style.background = cvetPorcii[napitok] ?? '#f6f1e8'
       mesta.push(porciya)
     }
-    const steklo = el('span', { class: 'steklo' }, mesta)
-    const knopka = el(
+    const steklo = sozdat('span', { class: 'steklo' }, mesta)
+    const knopka = sozdat(
       'button',
       {
         class: 'butylka',
@@ -59,7 +59,7 @@ function narisovat() {
         'data-vybrana': snimok.vybrannayaButylka === nomer ? 'da' : 'net',
         'aria-label': `Бутылка ${nomer + 1}`,
       },
-      [el('span', { class: 'gorlyshko' }), steklo],
+      [sozdat('span', { class: 'gorlyshko' }), steklo],
     )
     knopka.addEventListener('click', () => {
       zahod.nazhat(nomer)
@@ -69,32 +69,31 @@ function narisovat() {
   })
 
   const chasti: Node[] = [
-    el('div', { class: 'polosa' }, [
-      el('p', { class: 'zapas', 'data-zapas': `${snimok.zapas}/${snimok.potolok}` }, [
-        el('b', {}, [document.createTextNode(`${snimok.zapas}/${snimok.potolok}`)]),
-        el('span', {}, [document.createTextNode(snimok.sostoyanie)]),
+    sozdat('div', { class: 'polosa' }, [
+      sozdat('p', { class: 'zapas', 'data-zapas': `${snimok.zapas}/${snimok.potolok}` }, [
+        sozdat('b', {}, [document.createTextNode(`${snimok.zapas}/${snimok.potolok}`)]),
       ]),
     ]),
   ]
 
   if (snimok.plashkaPobedy) {
     chasti.push(
-      el('div', { class: 'plashka', 'data-plashka': 'pobeda' }, [
-        el('h1', {}, [document.createTextNode(snimok.plashkaPobedy.zagolovok)]),
-        el('p', {}, [
-          el('b', {}, [document.createTextNode(String(snimok.plashkaPobedy.hody))]),
-          el('small', {}, [document.createTextNode(snimok.podpisHody)]),
+      sozdat('div', { class: 'plashka', 'data-plashka': 'pobeda' }, [
+        sozdat('h1', {}, [document.createTextNode(snimok.plashkaPobedy.zagolovok)]),
+        sozdat('p', {}, [
+          sozdat('b', {}, [document.createTextNode(String(snimok.plashkaPobedy.hody))]),
+          sozdat('small', {}, [document.createTextNode(snimok.podpisHody)]),
         ]),
       ]),
     )
   }
 
   chasti.push(
-    el('div', { class: 'ryad' }, butylki),
-    el('div', { class: 'niz' }, [
-      el('p', { class: 'hody', 'data-hody': String(snimok.hody) }, [
-        el('b', {}, [document.createTextNode(String(snimok.hody))]),
-        el('small', {}, [document.createTextNode(snimok.podpisHody)]),
+    sozdat('div', { class: 'ryad' }, butylki),
+    sozdat('div', { class: 'niz' }, [
+      sozdat('p', { class: 'hody', 'data-hody': String(snimok.hody) }, [
+        sozdat('b', {}, [document.createTextNode(String(snimok.hody))]),
+        sozdat('small', {}, [document.createTextNode(snimok.podpisHody)]),
       ]),
     ]),
   )

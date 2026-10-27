@@ -3,7 +3,6 @@
   --ink: #f6f1e8;
   --dim: #6d6878;
   --cyan: #79f6ff;
-  --pink: #ff5ad4;
   --gold: #ffe56a;
   --line: #3a3544;
   color: var(--ink);
@@ -54,11 +53,6 @@ body {
   font-size: 28px;
   color: var(--gold);
   font-weight: 700;
-}
-
-.zapas span {
-  color: var(--pink);
-  font-size: 14px;
 }
 
 .ryad {
@@ -144,7 +138,8 @@ body {
   line-height: 1;
 }
 
-.hody small {
+.hody small,
+.plashka small {
   display: block;
   margin-top: 4px;
   color: var(--dim);
@@ -172,11 +167,4 @@ body {
   margin: 0;
   color: var(--cyan);
   font-size: 28px;
-}
-
-.plashka small {
-  display: block;
-  margin-top: 4px;
-  color: var(--dim);
-  font-size: 13px;
 }

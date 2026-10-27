@@ -12,7 +12,6 @@ export type SnimokPrilavka = {
   plashkaPobedy: null | { zagolovok: 'Победа'; hody: number }
   zapas: 120
   potolok: 120
-  sostoyanie: 'Трезв'
 }
 
 export type Zahod = {
@@ -86,7 +85,6 @@ export function nachatZahod(rasstanovka: Rasstanovka): Zahod {
           : null,
         zapas: 120,
         potolok: 120,
-        sostoyanie: 'Трезв',
       }
     },
   }

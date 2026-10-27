@@ -27,7 +27,6 @@ test('на старте порции стоят снизу вверх, выбо�
     plashkaPobedy: null,
     zapas: 120,
     potolok: 120,
-    sostoyanie: 'Трезв',
   })
 })
 
@@ -184,7 +183,6 @@ test('победа, когда каждая бутылка пуста или з�
   expect(snimok.podpisHody).toBe('ходы')
   expect(snimok.zapas).toBe(120)
   expect(snimok.potolok).toBe(120)
-  expect(snimok.sostoyanie).toBe('Трезв')
 
   zahod.nazhat(0)
   zahod.nazhat(1)
@@ -212,9 +210,9 @@ test('портретный прилавок из четырёх бутылок �
     [1, 3],
     [0, 3],
   ]
-  for (const [iz, v] of hody) {
-    zahod.nazhat(iz)
-    zahod.nazhat(v)
+  for (const [istochnik, priemnik] of hody) {
+    zahod.nazhat(istochnik)
+    zahod.nazhat(priemnik)
   }
 
   const snimok = zahod.snimok()
