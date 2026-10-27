@@ -7,13 +7,6 @@ const pilsner = 'Pilsner Urquell'
 const cvetPorcii: Record<string, string> = {
   'Guinness Draught': '#6e1b32',
   'Pilsner Urquell': '#e6c15a',
-  Aperol: '#ff6a1a',
-  'Giffard Crème de Violette': '#7a3cff',
-  'Baileys Original Irish Cream': '#e7d3b0',
-  'Giffard Lichi-Li': '#f3b6c8',
-  'Bols Blue Curaçao': '#1f5bff',
-  Campari: '#e23b3b',
-  'Chartreuse Verte': '#b6d34a',
 }
 
 const zahod = nachatZahod({
@@ -82,13 +75,6 @@ function narisovat() {
         el('span', {}, [document.createTextNode(snimok.sostoyanie)]),
       ]),
     ]),
-    el('div', { class: 'ryad' }, butylki),
-    el('div', { class: 'niz' }, [
-      el('p', { class: 'hody', 'data-hody': String(snimok.hody) }, [
-        el('b', {}, [document.createTextNode(String(snimok.hody))]),
-        el('small', {}, [document.createTextNode(snimok.podpisHody)]),
-      ]),
-    ]),
   ]
 
   if (snimok.plashkaPobedy) {
@@ -102,6 +88,16 @@ function narisovat() {
       ]),
     )
   }
+
+  chasti.push(
+    el('div', { class: 'ryad' }, butylki),
+    el('div', { class: 'niz' }, [
+      el('p', { class: 'hody', 'data-hody': String(snimok.hody) }, [
+        el('b', {}, [document.createTextNode(String(snimok.hody))]),
+        el('small', {}, [document.createTextNode(snimok.podpisHody)]),
+      ]),
+    ]),
+  )
 
   koren.replaceChildren(...chasti)
 }

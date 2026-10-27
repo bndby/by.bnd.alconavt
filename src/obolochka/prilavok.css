@@ -44,7 +44,7 @@ body {
 }
 
 .zapas {
-  margin: 0;
+  margin: 0 0 0 auto;
   text-align: right;
   line-height: 1.15;
 }
@@ -152,15 +152,12 @@ body {
 }
 
 .plashka {
-  position: absolute;
-  left: 24px;
-  right: 24px;
-  top: 42%;
-  transform: translateY(-50%);
+  flex: 0 0 auto;
+  margin: 8px 24px 0;
   background: rgba(16, 14, 20, 0.92);
   border: 2px solid var(--gold);
   text-align: center;
-  padding: 20px 16px;
+  padding: 16px;
   pointer-events: none;
 }
 
