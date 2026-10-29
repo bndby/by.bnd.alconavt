@@ -21,6 +21,8 @@ class MainActivity : Activity() {
     private lateinit var bannerTitleView: TextView
     private lateinit var bannerMovesView: TextView
     private lateinit var rackContainer: LinearLayout
+    private lateinit var restartButtonView: TextView
+    private lateinit var undoButtonView: TextView
     private lateinit var movesValueView: TextView
     private lateinit var movesLabelView: TextView
 
@@ -107,8 +109,48 @@ class MainActivity : Activity() {
             )
         )
 
-        // Нижняя полоса со счётчиком «ходы» (без подсказки и без строки, объясняющей жест)
+        // Нижняя полоса прилавка: «Сначала», «Отмена хода» и счётчик ходов (без подсказки и без строки, объясняющей жест)
         val footer = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val actionsGroup = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        restartButtonView = createActionButton().apply {
+            setOnClickListener {
+                session.restartRun()
+                render()
+            }
+        }
+        undoButtonView = createActionButton().apply {
+            setOnClickListener {
+                session.undoMove()
+                render()
+            }
+        }
+
+        actionsGroup.addView(
+            restartButtonView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                rightMargin = dp(8)
+            }
+        )
+        actionsGroup.addView(
+            undoButtonView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        val movesGroup = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.END
         }
@@ -122,8 +164,24 @@ class MainActivity : Activity() {
             textSize = 13f
             gravity = Gravity.END
         }
-        footer.addView(movesValueView)
-        footer.addView(movesLabelView)
+        movesGroup.addView(movesValueView)
+        movesGroup.addView(movesLabelView)
+
+        footer.addView(
+            actionsGroup,
+            LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f
+            )
+        )
+        footer.addView(
+            movesGroup,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
         root.addView(
             footer,
             LinearLayout.LayoutParams(
@@ -149,6 +207,15 @@ class MainActivity : Activity() {
             bannerLayout.visibility = View.GONE
         }
 
+        val restart = snap.restartButton
+        if (restart != null) {
+            restartButtonView.visibility = View.VISIBLE
+            bindActionButton(restartButtonView, restart)
+        } else {
+            restartButtonView.visibility = View.GONE
+        }
+        bindActionButton(undoButtonView, snap.undoButton)
+
         movesValueView.text = snap.moves.toString()
         movesLabelView.text = snap.movesLabel
 
@@ -169,6 +236,29 @@ class MainActivity : Activity() {
                 setMargins(margin, margin, margin, margin)
             }
             rackContainer.addView(bottleView, lp)
+        }
+    }
+
+    private fun createActionButton(): TextView = TextView(this).apply {
+        textSize = 14f
+        gravity = Gravity.CENTER
+        val hPad = dp(12)
+        val vPad = dp(8)
+        setPadding(hPad, vPad, hPad, vPad)
+    }
+
+    private fun bindActionButton(view: TextView, state: ActionButtonSnapshot) {
+        view.text = state.title
+        view.isEnabled = state.enabled
+        view.isClickable = state.enabled
+        if (state.enabled) {
+            view.setTextColor(Color.parseColor("#79F6FF"))
+            view.setBackgroundColor(Color.parseColor("#231F2C"))
+            view.alpha = 1f
+        } else {
+            view.setTextColor(Color.parseColor("#555061"))
+            view.setBackgroundColor(Color.parseColor("#17141D"))
+            view.alpha = 0.5f
         }
     }
 
