@@ -7,9 +7,11 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.os.Bundle
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 
@@ -23,6 +25,8 @@ class MainActivity : Activity() {
     private lateinit var rackContainer: LinearLayout
     private lateinit var movesValueView: TextView
     private lateinit var movesLabelView: TextView
+    private lateinit var sheetOverlay: LinearLayout
+    private lateinit var sheetTitleView: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,9 +41,12 @@ class MainActivity : Activity() {
             )
         )
 
+        val rootFrame = FrameLayout(this).apply {
+            setBackgroundColor(Color.parseColor("#100E14"))
+        }
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#100E14"))
             val pad = dp(16)
             setPadding(pad, pad, pad, pad)
         }
@@ -93,9 +100,9 @@ class MainActivity : Activity() {
             }
         )
 
-        // Прилавок с бутылками
+        // Прилавок с рядами клеток бутылок
         rackContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
         }
         root.addView(
@@ -132,8 +139,74 @@ class MainActivity : Activity() {
             )
         )
 
-        setContentView(root)
+        rootFrame.addView(
+            root,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        // Лист карточки напитка поверх экрана уровня
+        sheetOverlay = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#100E14"))
+            val pad = dp(20)
+            setPadding(pad, pad, pad, pad)
+            visibility = View.GONE
+        }
+        val backFromSheet = TextView(this).apply {
+            text = "Назад"
+            setTextColor(Color.parseColor("#FF5AD4"))
+            textSize = 16f
+            val pad = dp(8)
+            setPadding(pad, pad, pad, pad)
+            setOnClickListener {
+                session.closeDrinkSheet()
+                render()
+            }
+        }
+        sheetTitleView = TextView(this).apply {
+            setTextColor(Color.parseColor("#FFE56A"))
+            textSize = 22f
+        }
+        sheetOverlay.addView(
+            backFromSheet,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        sheetOverlay.addView(
+            sheetTitleView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dp(12)
+            }
+        )
+        rootFrame.addView(
+            sheetOverlay,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        setContentView(rootFrame)
         render()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (session.snapshot().openedDrinkSheet != null) {
+            session.closeDrinkSheet()
+            render()
+            return
+        }
+        @Suppress("DEPRECATION")
+        super.onBackPressed()
     }
 
     private fun render() {
@@ -149,26 +222,102 @@ class MainActivity : Activity() {
             bannerLayout.visibility = View.GONE
         }
 
+        val sheet = snap.openedDrinkSheet
+        if (sheet != null) {
+            sheetOverlay.visibility = View.VISIBLE
+            sheetTitleView.text = sheet.title
+        } else {
+            sheetOverlay.visibility = View.GONE
+        }
+
         movesValueView.text = snap.moves.toString()
         movesLabelView.text = snap.movesLabel
 
         rackContainer.removeAllViews()
-        snap.bottles.forEachIndexed { index, bottle ->
-            val bottleView = BottleView(
-                context = this,
-                capacity = snap.capacity,
-                bottle = bottle
-            ).apply {
-                setOnClickListener {
-                    session.tapBottle(index)
-                    render()
+        var bottleGlobalIndex = 0
+        snap.rows.forEach { rowBottles ->
+            val rowLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                weightSum = snap.columnsPerRow.toFloat()
+            }
+
+            rowBottles.forEach { bottle ->
+                val currentIndex = bottleGlobalIndex++
+                val cellLayout = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER_HORIZONTAL
                 }
+
+                val bottleView = BottleView(
+                    context = this,
+                    capacity = snap.capacity,
+                    bottle = bottle
+                ).apply {
+                    setOnClickListener {
+                        session.tapBottleGlass(currentIndex)
+                        render()
+                    }
+                }
+                cellLayout.addView(
+                    bottleView,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        0,
+                        1f
+                    )
+                )
+
+                val nameView = TextView(this).apply {
+                    val drinkName = bottle.completedDrinkName
+                    text = drinkName ?: ""
+                    visibility = if (drinkName != null) View.VISIBLE else View.INVISIBLE
+                    setTextColor(Color.parseColor("#FFE56A"))
+                    textSize = 11f
+                    maxLines = 2
+                    ellipsize = TextUtils.TruncateAt.END
+                    gravity = Gravity.CENTER
+                    minHeight = dp(28)
+                    val padH = dp(4)
+                    val padV = dp(2)
+                    setPadding(padH, padV, padH, padV)
+                    if (drinkName != null) {
+                        setOnClickListener {
+                            session.tapBottleName(currentIndex)
+                            render()
+                        }
+                    }
+                }
+                cellLayout.addView(
+                    nameView,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        topMargin = dp(4)
+                    }
+                )
+
+                val cellMargin = dp(4)
+                val cellParams = LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    1f
+                ).apply {
+                    setMargins(cellMargin, cellMargin, cellMargin, cellMargin)
+                }
+                rowLayout.addView(cellLayout, cellParams)
             }
-            val lp = LinearLayout.LayoutParams(0, dp(220), 1f).apply {
-                val margin = dp(6)
-                setMargins(margin, margin, margin, margin)
+
+            val rowParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            ).apply {
+                topMargin = dp(4)
+                bottomMargin = dp(4)
             }
-            rackContainer.addView(bottleView, lp)
+            rackContainer.addView(rowLayout, rowParams)
         }
     }
 
@@ -184,43 +333,82 @@ private class BottleView(
 
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 6f
+        strokeWidth = 5f
+    }
+    private val glassBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.parseColor("#16141C")
     }
     private val slotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
-    private val emptySlotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val slotGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 3f
+    }
+    private val emptySlotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 2.5f
         color = Color.parseColor("#3A3544")
     }
     private val rect = RectF()
+    private val neckRect = RectF()
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        val pad = 12f
-        val left = pad
-        val top = pad
-        val right = width - pad
-        val bottom = height - pad
+        if (width <= 0 || height <= 0) return
 
-        borderPaint.color = if (bottle.selected) {
-            Color.parseColor("#79F6FF")
-        } else {
-            Color.parseColor("#6A6478")
+        val strokeInset = borderPaint.strokeWidth / 2f
+        val availWidth = (width - strokeInset * 2f).coerceAtLeast(1f)
+        val availHeight = (height - strokeInset * 2f).coerceAtLeast(1f)
+
+        // Стекло вместе с общим горлышком остаётся внутри клетки и масштабируется по вместимости:
+        // при вместимости 3 оставляет запас вокруг, при 6 доходит до края клетки, 4 и 5 — между ними.
+        val glassTotalWidth = availWidth * bottle.glass.widthFraction.coerceIn(0.5f, 1.0f)
+        val glassTotalHeight = availHeight * bottle.glass.heightFraction.coerceIn(0.5f, 1.0f)
+
+        val totalLeft = (width - glassTotalWidth) / 2f
+        val totalRight = totalLeft + glassTotalWidth
+        // Прижимаем бутылку к низу клетки (при вместимости 6 доходит и до верхнего, и до боковых краёв клетки)
+        val totalBottom = height - strokeInset
+        val totalTop = (totalBottom - glassTotalHeight).coerceAtLeast(strokeInset)
+
+        // Общее горлышко сверху внутри габарита стекла
+        val neckHeight = (glassTotalHeight * 0.12f).coerceIn(8f, 22f)
+        val neckWidth = (glassTotalWidth * 0.44f).coerceAtLeast(12f)
+        val neckLeft = (width - neckWidth) / 2f
+        val neckRight = neckLeft + neckWidth
+        val neckTop = totalTop
+        val neckBottom = totalTop + neckHeight
+
+        val bodyTop = neckBottom
+        val bodyBottom = totalBottom
+        val bodyLeft = totalLeft
+        val bodyRight = totalRight
+
+        borderPaint.color = when {
+            bottle.selected -> Color.parseColor("#79F6FF")
+            bottle.completedDrinkName != null -> Color.parseColor("#FFE56A")
+            else -> Color.parseColor("#6A6478")
         }
-        rect.set(left, top, right, bottom)
-        canvas.drawRoundRect(rect, 12f, 12f, borderPaint)
+
+        neckRect.set(neckLeft, neckTop, neckRight, neckBottom)
+        rect.set(bodyLeft, bodyTop, bodyRight, bodyBottom)
+
+        canvas.drawRoundRect(neckRect, 4f, 4f, glassBgPaint)
+        canvas.drawRoundRect(neckRect, 4f, 4f, borderPaint)
+        canvas.drawRoundRect(rect, 10f, 10f, glassBgPaint)
+        canvas.drawRoundRect(rect, 10f, 10f, borderPaint)
 
         if (capacity <= 0) return
-        val innerPad = 10f
-        val gap = 8f
-        val innerLeft = left + innerPad
-        val innerRight = right - innerPad
-        val innerTop = top + innerPad
-        val innerBottom = bottom - innerPad
-        val totalHeight = innerBottom - innerTop
-        val slotHeight = (totalHeight - gap * (capacity - 1)) / capacity
+        val innerPad = 6f
+        val gap = 4f
+        val innerLeft = bodyLeft + innerPad
+        val innerRight = bodyRight - innerPad
+        val innerTop = bodyTop + innerPad
+        val innerBottom = bodyBottom - innerPad
+        val totalSlotsHeight = (innerBottom - innerTop).coerceAtLeast(1f)
+        val slotHeight = ((totalSlotsHeight - gap * (capacity - 1)) / capacity).coerceAtLeast(2f)
 
         // Свободные места видны сверху, порции стоят стопкой снизу вверх
         for (slotFromBottom in 0 until capacity) {
@@ -229,8 +417,11 @@ private class BottleView(
             rect.set(innerLeft, slotTop, innerRight, slotBottom)
             val drink = bottle.portions.getOrNull(slotFromBottom)
             if (drink != null) {
-                slotPaint.color = drinkColor(drink)
+                val color = drinkColor(drink)
+                slotPaint.color = color
                 canvas.drawRect(rect, slotPaint)
+                slotGlowPaint.color = drinkGlowColor(drink)
+                canvas.drawRect(rect, slotGlowPaint)
             } else {
                 canvas.drawRect(rect, emptySlotPaint)
             }
@@ -247,5 +438,10 @@ private class BottleView(
         Drink.BOLS_BLUE_CURACAO -> Color.parseColor("#2F6BFF")
         Drink.CAMPARI -> Color.parseColor("#E10600")
         Drink.CHARTREUSE_VERTE -> Color.parseColor("#C6E04A")
+    }
+
+    private fun drinkGlowColor(drink: Drink): Int = when (drink) {
+        Drink.GUINNESS_DRAUGHT -> Color.parseColor("#B83258")
+        else -> Color.argb(96, 255, 255, 255)
     }
 }
