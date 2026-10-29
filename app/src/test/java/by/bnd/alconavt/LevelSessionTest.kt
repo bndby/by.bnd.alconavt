@@ -1384,4 +1384,396 @@ class LevelSessionTest {
             assertNull(snap.victoryBanner)
         }
     }
+
+    @Test
+    fun `в пуле девять напитков с точными именами, словесными цветами, крепостью и не сливающимися на тёмном экране пиксельными цветами`() {
+        val drinks = Drink.entries
+        assertEquals(9, drinks.size)
+
+        val expectedPool = listOf(
+            Triple("Guinness Draught", "тёмный рубин", "4,2%"),
+            Triple("Pilsner Urquell", "светло-золотой", "4,4%"),
+            Triple("Aperol", "ярко-оранжевый", "11%"),
+            Triple("Giffard Crème de Violette", "фиолетовый", "16%"),
+            Triple("Baileys Original Irish Cream", "кремово-бежевый", "17%"),
+            Triple("Giffard Lichi-Li", "светло-розовый", "18%"),
+            Triple("Bols Blue Curaçao", "ярко-синий", "21%"),
+            Triple("Campari", "прозрачный алый", "25%"),
+            Triple("Chartreuse Verte", "жёлто-зелёный", "55%")
+        )
+
+        assertEquals(
+            expectedPool,
+            drinks.map { Triple(it.title, it.colorName, it.strength) }
+        )
+
+        // У каждого напитка свой уникальный пиксельный цвет, отличный от чёрного и от тёмного фона #100E14
+        val darkBackgroundRgb = 0x100E14
+        val pixelColors = drinks.map { it.pixelColorRgb }
+        assertEquals(9, pixelColors.toSet().size)
+        assertFalse(pixelColors.contains(0x000000))
+        assertFalse(pixelColors.contains(darkBackgroundRgb))
+
+        // Все 36 пар напитков и пара с тёмным фоном заметно разведены в RGB-пространстве (евклидово расстояние >= 45)
+        fun rgbDistance(c1: Int, c2: Int): Double {
+            val r1 = (c1 shr 16) and 0xFF
+            val g1 = (c1 shr 8) and 0xFF
+            val b1 = c1 and 0xFF
+            val r2 = (c2 shr 16) and 0xFF
+            val g2 = (c2 shr 8) and 0xFF
+            val b2 = c2 and 0xFF
+            val dr = (r1 - r2).toDouble()
+            val dg = (g1 - g2).toDouble()
+            val db = (b1 - b2).toDouble()
+            return kotlin.math.sqrt(dr * dr + dg * dg + db * db)
+        }
+
+        for (drink in drinks) {
+            assertTrue(
+                "Цвет ${drink.title} не должен сливаться с тёмным экраном",
+                rgbDistance(drink.pixelColorRgb, darkBackgroundRgb) >= 80.0
+            )
+        }
+        for (i in drinks.indices) {
+            for (j in i + 1 until drinks.size) {
+                val d = rgbDistance(drinks[i].pixelColorRgb, drinks[j].pixelColorRgb)
+                assertTrue(
+                    "Цвета ${drinks[i].title} и ${drinks[j].title} не должны сливаться (distance=$d)",
+                    d >= 45.0
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `рисунок бутылки на всех девяти листах имеет один и тот же силуэт без знака дома, залит до горлышка цветом напитка со статичным свечением, у Guinness Draught тихий рубиновый край без пенной шапки на рисунке и не зависит от уровня`() {
+        val capacities = listOf(3, 4, 5, 6)
+        val illustrationsByDrink = mutableMapOf<Drink, BottleIllustrationSnapshot>()
+
+        for (drink in Drink.entries) {
+            val illustrationsAcrossLevels = capacities.map { cap ->
+                val bottleCount = when (cap) {
+                    3 -> 4
+                    4 -> 6
+                    5 -> 8
+                    else -> 10
+                }
+                val session = LevelSession(
+                    capacity = cap,
+                    initialBottles = listOf(
+                        List(cap - 1) { drink },
+                        listOf(drink)
+                    ) + List(bottleCount - 2) { emptyList() }
+                )
+                session.tapBottle(1)
+                session.tapBottle(0)
+                session.tapBottleName(0)
+                val card = session.snapshot().drinkCard
+                assertNotNull("Карточка ${drink.title} должна открыться на уровне вместимостью $cap", card)
+                card!!.illustration
+            }
+
+            // С какого уровня лист ни открыт, рисунок тот же
+            val first = illustrationsAcrossLevels.first()
+            for (ill in illustrationsAcrossLevels) {
+                assertEquals(first, ill)
+            }
+
+            assertTrue(first.sharedPixelSilhouette)
+            assertFalse(first.hasHouseMark)
+            assertFalse(first.hasManufacturerPhoto)
+            assertTrue(first.filledToNeck)
+            assertTrue(first.hasStaticGlow)
+            assertTrue(first.staticGlowOfDrinkColor)
+            assertFalse(first.hasFoamHeadLayer)
+            assertEquals(drink.colorName, first.colorName)
+            assertEquals(drink.pixelColorRgb, first.fillColorRgb)
+            assertEquals(drink.pixelColorRgb, first.glowColorRgb)
+
+            // Силуэт состоит только из пустого фона '0', жидкости '1' (залитой до горлышка без отдельного слоя пены) и стекла '2'
+            assertTrue(first.pixelMask.all { row -> row.all { ch -> ch == '0' || ch == '1' || ch == '2' } })
+            // Горлышко (строки 1 и 2) и тело бутылки залиты одним и тем же кодом жидкости '1'
+            assertTrue(first.pixelMask[1].contains('1'))
+            assertTrue(first.pixelMask[2].contains('1'))
+            assertTrue(first.pixelMask[4].contains('1'))
+
+            if (drink == Drink.GUINNESS_DRAUGHT) {
+                assertTrue(first.subtleRubyEdge)
+                assertEquals("тёмный рубин", first.colorName)
+            } else {
+                assertFalse(first.subtleRubyEdge)
+            }
+
+            illustrationsByDrink[drink] = first
+        }
+
+        // У всех девяти напитков один и тот же пиксельный силуэт
+        val commonMask = illustrationsByDrink.values.first().pixelMask
+        for (ill in illustrationsByDrink.values) {
+            assertEquals(commonMask, ill.pixelMask)
+        }
+    }
+
+    @Test
+    fun `сборка каждого из девяти напитков пула открывает его лист с точным именем, крепостью, цветом, культурой, историей и фактами без пустых заглушек и выдуманных сведений`() {
+        fun assembleAndOpenCard(drink: Drink): DrinkCardSnapshot {
+            val otherDrink = if (drink == Drink.GUINNESS_DRAUGHT) Drink.PILSNER_URQUELL else Drink.GUINNESS_DRAUGHT
+            val session = LevelSession(
+                capacity = 3,
+                initialBottles = listOf(
+                    listOf(drink, drink),
+                    listOf(otherDrink, drink),
+                    emptyList(),
+                    emptyList()
+                )
+            )
+            // Переливаем третий слой drink из бутылки 1 в бутылку 0, собирая полную бутылку
+            session.tapBottle(1)
+            session.tapBottle(0)
+            assertEquals(drink.title, session.snapshot().bottles[0].completedDrinkName)
+
+            session.tapBottleName(0)
+            val snap = session.snapshot()
+            assertEquals(ScreenId.DRINK_CARD, snap.screen)
+            assertNotNull(snap.drinkCard)
+            return snap.drinkCard!!
+        }
+
+        val cards = Drink.entries.associateWith { assembleAndOpenCard(it) }
+        assertEquals(9, cards.size)
+
+        // Общие инварианты для всех девяти листов: нет пустых заглушек там, где дом ничего не назвал
+        val forbiddenPlaceholders = listOf("не указано", "нет данных", "н/д", "N/A", "TBD", "TODO", "неизвестно")
+        for ((drink, card) in cards) {
+            val fullText = listOf(card.name, card.strength, card.drinkingCulture, card.history).joinToString(" ") +
+                " " + card.facts.joinToString(" ")
+            assertTrue(card.drinkingCulture.isNotBlank())
+            assertTrue(card.history.isNotBlank())
+            assertEquals(3, card.facts.size)
+            assertTrue(card.facts.all { it.isNotBlank() })
+            for (placeholder in forbiddenPlaceholders) {
+                assertFalse(
+                    "На листе ${drink.title} не должно быть заглушки '$placeholder'",
+                    fullText.contains(placeholder, ignoreCase = true)
+                )
+            }
+        }
+
+        // 1. Guinness Draught
+        val guinness = cards.getValue(Drink.GUINNESS_DRAUGHT)
+        assertEquals("Guinness Draught", guinness.name)
+        assertEquals("4,2%", guinness.strength)
+        assertEquals("тёмный рубин", guinness.colorName)
+        assertEquals(
+            "Чистый сухой бокал и налив в два приёма под 45 градусов; дома из банки — чистый пинтовый бокал. К пинте — пирог со стейком и чеддером.",
+            guinness.drinkingCulture
+        )
+        assertEquals(
+            "31 декабря 1759 года Артур Гиннесс подписал аренду пивоварни St. James’s Gate на девять тысяч лет; Guinness Draught впервые сварен в 1959 году к двухсотлетию.",
+            guinness.history
+        )
+        assertEquals(
+            listOf(
+                "В банке виджет с азотом даёт кремовую шапку.",
+                "Фильтрацию рыбьим клеем убрали, и напиток назван подходящим для веганов.",
+                "В составе указан азот."
+            ),
+            guinness.facts
+        )
+        assertFalse(guinness.illustration.hasFoamHeadLayer)
+
+        // 2. Pilsner Urquell
+        val pilsner = cards.getValue(Drink.PILSNER_URQUELL)
+        assertEquals("Pilsner Urquell", pilsner.name)
+        assertEquals("4,4%", pilsner.strength)
+        assertEquals("светло-золотой", pilsner.colorName)
+        assertEquals(
+            "Длинный узкий бокал на ножке; в танковых пабах — кружка с ручкой. К пиву — чешский гуляш из говядины с хлебными или картофельными кнедликами. Три налива: Hladinka к жирному, Šnyt к гуляшу или бургеру, Mlíko к десерту.",
+            pilsner.drinkingCulture
+        )
+        assertEquals(
+            "5 октября 1842 года Йозеф Гролл сварил первую варку из мягкой пльзеньской воды, жатецкого хмеля и моравского ячменя.",
+            pilsner.history
+        )
+        assertEquals(
+            listOf(
+                "Рецепт и способ варки с 1842 года дом не менял.",
+                "Золотая крышка бутылки отмечает ворота старого завода.",
+                "У Hladinka три пальца пены, Šnyt — две доли пива и три доли пены, Mlíko — почти один стакан пены."
+            ),
+            pilsner.facts
+        )
+
+        // 3. Aperol
+        val aperol = cards.getValue(Drink.APEROL)
+        assertEquals("Aperol", aperol.name)
+        assertEquals("11%", aperol.strength)
+        assertEquals("ярко-оранжевый", aperol.colorName)
+        assertEquals(
+            "Большой винный бокал со льдом и долькой апельсина. К спритцу — чичетти: кростини, польпетте, аранчини, тараллини, трамеццини, торинези, мясная нарезка, брускетта, маринованные оливки и выдержанные сыры.",
+            aperol.drinkingCulture
+        )
+        assertEquals(
+            "В 1919 году братья Луиджи и Сильвио Барбьери выпустили аперитив после проб с 1912 года; сначала его пили в Падуе и Венеции; рецепт спритца дом относит к 1950-м.",
+            aperol.history
+        )
+        assertEquals(
+            listOf(
+                "Рецепт дом называет секретным и неизменным.",
+                "Бутылки 70 сл и 1 л.",
+                "Спритц — 3 доли Prosecco D.O.C., 2 доли Aperol и 1 доля содовой."
+            ),
+            aperol.facts
+        )
+
+        // 4. Giffard Crème de Violette
+        val violette = cards.getValue(Drink.GIFFARD_CREME_DE_VIOLETTE)
+        assertEquals("Giffard Crème de Violette", violette.name)
+        assertEquals("16%", violette.strength)
+        assertEquals("фиолетовый", violette.colorName)
+        assertEquals(
+            "Отдельного бокала нет; аперитив с сухим белым, розовым или игристым и коктейли. Отдельных блюд к ликёру нет; фиалку дом упоминает в кондитерских изделиях.",
+            violette.drinkingCulture
+        )
+        assertEquals(
+            "Дом Эмиля Жиффара с жаркого лета 1885 года и мятного Menthe-Pastille, Анже, семейная компания; стиль крем-де-виолетт — XIX век.",
+            violette.history
+        )
+        assertEquals(
+            listOf(
+                "Натуральный аромат фиалки, Франция.",
+                "Коктейли Aviation и Blue Moon.",
+                "Без лактозы, без глютена, подходит веганам, без консерванта."
+            ),
+            violette.facts
+        )
+        // Год именно этой бутылки на лист не ставится (упомянут только 1885 год дома и XIX век стиля)
+        assertEquals(listOf("1885"), Regex("\\b\\d{4}\\b").findAll(violette.history).map { it.value }.toList())
+
+        // 5. Baileys Original Irish Cream
+        val baileys = cards.getValue(Drink.BAILEYS_ORIGINAL_IRISH_CREAM)
+        assertEquals("Baileys Original Irish Cream", baileys.name)
+        assertEquals("17%", baileys.strength)
+        assertEquals("кремово-бежевый", baileys.colorName)
+        assertEquals(
+            "Чистым со льдом, имя бокала не называется. Блюда: полить мороженое, испечь торт, сандей из ванильного мороженого, Baileys и шоколадных крендельков.",
+            baileys.drinkingCulture
+        )
+        assertEquals(
+            "К 1974 году в рецепте ирландские сливки, ирландский виски, другие спирты, шоколад и ваниль; дом называет напиток первым сливочным ликёром.",
+            baileys.history
+        )
+        assertEquals(
+            listOf(
+                "Аллергены — молоко и молочные продукты, включая лактозу.",
+                "Дом говорит примерно о 200 миллионах литров свежего ирландского молока в год.",
+                "Молоко в основном с небольших семейных ферм."
+            ),
+            baileys.facts
+        )
+        // Имён основателей на листе нет
+        assertFalse(baileys.history.contains("Дэвид", ignoreCase = true))
+        assertFalse(baileys.history.contains("Глюкман", ignoreCase = true))
+        assertFalse(baileys.history.contains("Gluckman", ignoreCase = true))
+        assertFalse(baileys.history.contains("Дago", ignoreCase = true))
+        assertFalse(baileys.history.contains("МакФерсон", ignoreCase = true))
+
+        // 6. Giffard Lichi-Li
+        val lichi = cards.getValue(Drink.GIFFARD_LICHI_LI)
+        assertEquals("Giffard Lichi-Li", lichi.name)
+        assertEquals("18%", lichi.strength)
+        assertEquals("светло-розовый", lichi.colorName)
+        assertEquals(
+            "Чистым на колотом льду, в лонг-дринке или коктейле; отдельного бокала нет.",
+            lichi.drinkingCulture
+        )
+        assertEquals(
+            "Личи родом из Китая и растёт также в Индии, на Мадагаскаре и в Таиланде. 1885 год — основание дома, не дата Lichi-Li.",
+            lichi.history
+        )
+        assertEquals(
+            listOf(
+                "Аромат личи, Франция; вкус цветочный и слегка ванильный.",
+                "Без лактозы, без глютена, для веганов, без консерванта.",
+                "Срок настоя плодов от 48 часов до 3 месяцев — общий способ дома, не отдельный срок личи."
+            ),
+            lichi.facts
+        )
+        // Блюд на листе нет, год этого ликёра не ставится (только 1885 как основание дома)
+        assertFalse(lichi.drinkingCulture.contains("блюд", ignoreCase = true))
+        assertEquals(listOf("1885"), Regex("\\b\\d{4}\\b").findAll(lichi.history).map { it.value }.toList())
+
+        // 7. Bols Blue Curaçao
+        val bols = cards.getValue(Drink.BOLS_BLUE_CURACAO)
+        assertEquals("Bols Blue Curaçao", bols.name)
+        assertEquals("21%", bols.strength)
+        assertEquals("ярко-синий", bols.colorName)
+        assertEquals(
+            "Бокал самого ликёра не назван; для Blue Hawaii — хайбол.",
+            bols.drinkingCulture
+        )
+        assertEquals(
+            "Дистиллерия ‘t Lootsje в Амстердаме в 1575 году; в 1920-е восьмигранная бутылка и Blue Curacao; в 1926 году первая запись о Crème de Ciel; в 1933 году первая этикетка Bols Blue.",
+            bols.history
+        )
+        assertEquals(
+            listOf(
+                "Бутылка 70 сл, подходит веганам.",
+                "Вкус апельсиновой цедры и растительного настоя, в носе апельсин и мандарин.",
+                "Blue Hawaii дом датирует 1953 годом и приписывает Гарри Йи."
+            ),
+            bols.facts
+        )
+        // Блюд на листе нет, Aviation/Blue Moon для Bols не приписываются
+        assertFalse(bols.drinkingCulture.contains("блюд", ignoreCase = true))
+        assertFalse(bols.facts.joinToString(" ").contains("Aviation"))
+
+        // 8. Campari
+        val campari = cards.getValue(Drink.CAMPARI)
+        assertEquals("Campari", campari.name)
+        assertEquals("25%", campari.strength)
+        assertEquals("прозрачный алый", campari.colorName)
+        assertEquals(
+            "Negroni в рокс-тамблере со льдом и долькой апельсина, равные доли Campari, лондонского сухого джина и сладкого красного вермута.",
+            campari.drinkingCulture
+        )
+        assertEquals(
+            "В 1860 году Гаспаре Кампари составил жидкость, которую дом с тех пор не менял; в 1867 году открыл Caffè Campari в Галерее Виктора Эммануила II, в тот же год родился Давиде Кампари; в 1915 году Давиде открыл бар Camparino.",
+            campari.history
+        )
+        assertEquals(
+            listOf(
+                "Дом говорит, что без последнего ингредиента рецепт развалится.",
+                "Negroni входит в список IBA, категория The Unforgettable.",
+                "Campari назван красным сердцем и Americano, и Negroni."
+            ),
+            campari.facts
+        )
+        // Бокал чистого Campari и отдельные блюда не названы; спорный год Negroni (1919/1920) не ставится
+        assertFalse(campari.drinkingCulture.contains("блюд", ignoreCase = true))
+        assertFalse(campari.history.contains("1919"))
+        assertFalse(campari.history.contains("1920"))
+
+        // 9. Chartreuse Verte
+        val chartreuse = cards.getValue(Drink.CHARTREUSE_VERTE)
+        assertEquals("Chartreuse Verte", chartreuse.name)
+        assertEquals("55%", chartreuse.strength)
+        assertEquals("жёлто-зелёный", chartreuse.colorName)
+        assertEquals(
+            "Дижестив, охлаждённый до 12–13 °C или со льдом; имя бокала не названо. С XIX века ликёр кладут в сладкие и солёные рецепты. Green Chaud — горячий шоколад с ложкой ликёра, взбитыми сливками и какао.",
+            chartreuse.drinkingCulture
+        )
+        assertEquals(
+            "В 1840 году из растительного эликсира сделали «ликёр здоровья»; отец Гарнье дал имя Chartreuse Verte и в 1852 году зарегистрировал марку; ликёр делают картезианцы на дистиллерии Эгюнуар в Антр-де-Гье.",
+            chartreuse.history
+        )
+        assertEquals(
+            listOf(
+                "130 растений, коры, корней, пряностей и цветов; формулу знают только два человека в монастыре Гранд-Шартрёз.",
+                "Травы растирают в монастыре, цвет даёт мацерация, затем выдержка в дубовых чанах.",
+                "Бутылки 3, 20, 35, 70 и 300 сл, на горле печать Гранд-Шартрёз."
+            ),
+            chartreuse.facts
+        )
+    }
 }
