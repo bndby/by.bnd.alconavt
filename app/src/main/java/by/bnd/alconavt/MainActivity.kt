@@ -30,8 +30,33 @@ import kotlin.math.hypot
 import kotlin.math.min
 import kotlin.math.sin
 
+class SharedPreferencesGameStateStore(
+    context: Context,
+    prefsName: String = "alconavt_game_state"
+) : GameStateStore {
+    private val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+
+    override fun save(state: PersistedGameState) {
+        prefs.edit().putString(KEY_STATE, state.serialize()).apply()
+    }
+
+    override fun load(): PersistedGameState? {
+        val raw = prefs.getString(KEY_STATE, null) ?: return null
+        return PersistedGameState.deserialize(raw)
+    }
+
+    override fun clear() {
+        prefs.edit().remove(KEY_STATE).apply()
+    }
+
+    companion object {
+        private const val KEY_STATE = "serialized_game_state"
+    }
+}
+
 class MainActivity : Activity() {
 
+    private lateinit var stateStore: GameStateStore
     private lateinit var session: LevelSession
     private lateinit var backgroundBackdropView: BarBackdropView
     private lateinit var mapScreen: LinearLayout
@@ -89,8 +114,11 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        session = LevelSession.createLiveGame()
-        session.onClockTimeMillis(System.currentTimeMillis())
+        stateStore = SharedPreferencesGameStateStore(applicationContext)
+        session = LevelSession.coldStartFrom(
+            store = stateStore,
+            atClockMillis = System.currentTimeMillis()
+        )
 
         val rootFrame = FrameLayout(this).apply {
             setBackgroundColor(Color.parseColor("#100E14"))
@@ -748,7 +776,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        session.onAppReopened(System.currentTimeMillis())
+        session.resumeApp(System.currentTimeMillis())
         render()
         uiHandler.removeCallbacks(ambianceRunnable)
         uiHandler.post(ambianceRunnable)
@@ -756,8 +784,13 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         uiHandler.removeCallbacks(ambianceRunnable)
-        session.onAppClosed(System.currentTimeMillis())
+        session.minimizeApp(System.currentTimeMillis())
         super.onPause()
+    }
+
+    override fun onStop() {
+        session.closeApp(System.currentTimeMillis())
+        super.onStop()
     }
 
     override fun onDestroy() {

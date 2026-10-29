@@ -3751,4 +3751,373 @@ class LevelSessionTest {
         assertEquals(listOf(true) + List(19) { false }, session.snapshot().levelCards.map { it.unlocked })
         assertEquals(0, session.snapshot().levelCards.sumOf { it.bestStars })
     }
+
+    @Test
+    fun `сворачивание с живым процессом оставляет текущий экран включая открытый лист карточки и плашку победы а также продвигает часы`() {
+        val session = LevelSession.createLiveGame(initialStamina = 100, initialCeiling = 120)
+        session.onClockTimeMillis(1_000_000L)
+
+        // Входим в Under уровень 2 (3 хода до победы: 0->2, 1->0, 1->2)
+        assertTrue(session.tapCity("Минск"))
+        assertTrue(session.tapStreet("Зыбицкая"))
+        assertTrue(session.tapBar("Under"))
+        // Откроем уровень 2, пройдя уровень 1
+        assertTrue(session.tapLevelCard(1))
+        for ((from, to) in session.levels[0].solutionMoves) {
+            session.tapBottle(from)
+            session.tapBottle(to)
+        }
+        assertEquals(ScreenId.VICTORY_BANNER, session.snapshot().screen)
+
+        // 1. Сворачивание с живым процессом на плашке победы оставляет плашку победы и продвигает часы
+        val staminaAtWin = session.snapshot().stamina
+        session.minimizeApp(atClockMillis = 1_060_000L) // +1 мин
+        session.resumeApp(atClockMillis = 1_360_000L)   // +5 мин (всего +6 мин = +1 выносливость и 1 мин доли)
+        val afterResumeOnBanner = session.snapshot()
+        assertEquals(ScreenId.VICTORY_BANNER, afterResumeOnBanner.screen)
+        assertNotNull(afterResumeOnBanner.victoryBanner)
+        assertEquals(staminaAtWin + 1, afterResumeOnBanner.stamina)
+        assertEquals(60_000L, afterResumeOnBanner.recoveryProgressMillis)
+
+        // Переходим на уровень 2, собираем одну бутылку (0->2, 1->0 собирает Aperol в бутылке 0) и открываем лист карточки
+        session.tapToLevels()
+        assertTrue(session.tapLevelCard(2))
+        session.tapBottle(0)
+        session.tapBottle(2)
+        session.tapBottle(1)
+        session.tapBottle(0) // в бутылке 0 собран Aperol, уровень ещё не выигран (остался 1 ход: 1->2)
+        assertEquals(ScreenId.COUNTER, session.snapshot().screen)
+        session.tapBottleName(0)
+        assertEquals(ScreenId.DRINK_CARD, session.snapshot().screen)
+        assertEquals(Drink.APEROL, session.snapshot().drinkCard!!.drink)
+
+        // 2. Сворачивание с живым процессом на открытом листе оставляет этот же открытый лист карточки
+        session.backgroundApp(atClockMillis = 1_400_000L)
+        session.resumeApp(atClockMillis = 1_640_000L) // ещё +4 мин (итого с прошлой 1 мин = 5 мин -> +1 выносливость)
+        val afterResumeOnSheet = session.snapshot()
+        assertEquals(ScreenId.DRINK_CARD, afterResumeOnSheet.screen)
+        assertEquals(Drink.APEROL, afterResumeOnSheet.drinkCard!!.drink)
+        assertEquals(2, afterResumeOnSheet.moves)
+    }
+
+    @Test
+    fun `закрытие живой игры на прилавке плёнке или карте и холодный запуск открывают мир сохраняют незавершённые заходы разных баров расстановку счётчик историю отмены и отметки списания без выбора бутылки а закрытая игра копит единицу за каждые 5 минут и долю восстановления`() {
+        val store = InMemoryGameStateStore()
+        val session = LevelSession.createLiveGame(
+            initialStamina = 100,
+            initialCeiling = 120,
+            initialRecoveryProgressMillis = 120_000L, // 2 минуты уже накоплено
+            store = store
+        )
+        session.onClockTimeMillis(10_000_000L)
+
+        // В баре Under (Минск) проходим уровень 1 (тратим 2 выносливости: 100 -> 98) и начинаем уровень 2
+        assertTrue(session.tapCity("Минск"))
+        assertTrue(session.tapStreet("Зыбицкая"))
+        assertTrue(session.tapBar("Under"))
+        assertTrue(session.tapLevelCard(1))
+        for ((from, to) in session.levels[0].solutionMoves) {
+            session.tapBottle(from)
+            session.tapBottle(to)
+        }
+        assertEquals(ScreenId.VICTORY_BANNER, session.snapshot().screen)
+        session.tapToLevels()
+
+        // На уровне 2 в Under делаем 2 хода: 0->2 (Campari в пустую 2), 1->0 (Aperol собирается в бутылке 0, списано 2: 98 -> 96)
+        assertTrue(session.tapLevelCard(2))
+        session.tapBottle(0)
+        session.tapBottle(2)
+        session.tapBottle(1)
+        session.tapBottle(0)
+        val underL2ExpectedBottles = session.snapshot().bottles.map { it.portions }
+
+        // Переходим в другой бар (Киану в Москве): заход Under уровня 2 должен сохраниться
+        session.openWorldMap()
+        assertTrue(session.tapCity("Москва"))
+        assertTrue(session.tapStreet("Патрики"))
+        assertTrue(session.tapBar("Киану"))
+        assertTrue(session.tapLevelCard(1))
+        // В Киану на уровне 1 делаем 1 ход (0->2) и выбираем бутылку 1 (выбор бутылки НЕ должен сохраниться!)
+        session.tapBottle(0)
+        session.tapBottle(2)
+        session.tapBottle(1)
+        assertTrue(session.snapshot().bottles[1].selected)
+        val kianuL1ExpectedBottles = session.snapshot().bottles.map { it.portions }
+
+        // Прибавка бара Zodiac (2) поднимает потолок до 122 и запас с 96 до 98
+        session.applyBarBonus(2, targetBarName = "Zodiac")
+        assertEquals(98, session.snapshot().stamina)
+        assertEquals(122, session.snapshot().staminaCeiling)
+
+        // Закрываем приложение в момент 10_060_000 (+1 минута -> доля 2+1 = 3 минуты = 180_000 мс)
+        val persisted = session.closeApp(atClockMillis = 10_060_000L)
+        assertTrue(persisted.alive)
+        assertNull(persisted.storedSelectedBottle)
+        assertTrue(persisted.storedOpenedSheets.isEmpty())
+        assertTrue(persisted.storedViewedCards.isEmpty())
+        assertFalse(persisted.closedOnActiveRunDrinkSheet)
+
+        // Второй снимок после «закрыть приложение», без живого процесса (через сериализацию строки в хранилище),
+        // спустя 8 минут (480_000 мс) в момент 10_540_000:
+        // накопленные 180_000 + 480_000 = 660_000 мс -> +2 единицы выносливости (98 -> 100) и остаток доли 60_000 мс (1 мин)!
+        val coldSession = LevelSession.coldStartFrom(store, atClockMillis = 10_540_000L)
+        val coldSnap = coldSession.snapshot()
+
+        // 1. Холодный запуск живой игры открывает МИР (даже если закрыли на прилавке Киану)
+        assertEquals(ScreenId.WORLD_MAP, coldSnap.screen)
+        assertEquals(100, coldSnap.stamina)
+        assertEquals(122, coldSnap.staminaCeiling)
+        assertEquals(60_000L, coldSnap.recoveryProgressMillis)
+        assertEquals(2, coldSnap.awardedBarBonuses["Zodiac"])
+        val minskOnWorld = coldSnap.worldMap!!.cities.first { it.name == "Минск" }
+        assertEquals("3/336", minskOnWorld.fractionText)
+
+        // 2. Идём в Москву -> Патрики -> Киану -> уровень 1: незавершённый заход ждёт тапа, выбор бутылки снят
+        assertTrue(coldSession.tapCity("Москва"))
+        assertTrue(coldSession.tapStreet("Патрики"))
+        assertTrue(coldSession.tapBar("Киану"))
+        assertTrue(coldSession.tapLevelCard(1))
+        val resumedKianu = coldSession.snapshot()
+        assertEquals(ScreenId.COUNTER, resumedKianu.screen)
+        assertEquals(1, resumedKianu.moves)
+        assertEquals(kianuL1ExpectedBottles, resumedKianu.bottles.map { it.portions })
+        assertTrue(resumedKianu.bottles.none { it.selected })
+        assertTrue(resumedKianu.undoButton!!.enabled)
+
+        // 3. Идём в Минск -> Зыбицкая -> Under -> уровень 2: расстановка, счётчик (2), история отмены и отметка списания бутылки 0 на месте!
+        coldSession.openWorldMap()
+        assertTrue(coldSession.tapCity("Минск"))
+        assertTrue(coldSession.tapStreet("Зыбицкая"))
+        assertTrue(coldSession.tapBar("Under"))
+        val underFilm = coldSession.snapshot()
+        assertEquals(3, underFilm.levelCards[0].bestStars)
+        assertTrue(underFilm.levelCards[1].unlocked)
+        assertFalse(underFilm.levelCards[1].showsUnfinishedRunIndicator)
+
+        assertTrue(coldSession.tapLevelCard(2))
+        val resumedUnderL2 = coldSession.snapshot()
+        assertEquals(ScreenId.COUNTER, resumedUnderL2.screen)
+        assertEquals(2, resumedUnderL2.moves)
+        assertEquals(underL2ExpectedBottles, resumedUnderL2.bottles.map { it.portions })
+        assertTrue(resumedUnderL2.bottles[0].charged)
+        assertEquals(setOf(0), resumedUnderL2.chargedBottleIndices)
+        assertTrue(resumedUnderL2.bottles.none { it.selected })
+
+        // Проверяем, что история отмены работает после холодного запуска, а повторная сборка бутылки 0 не списывает выносливость снова
+        val staminaBeforeUndo = resumedUnderL2.stamina
+        coldSession.undoMove()
+        assertEquals(1, coldSession.snapshot().moves)
+        assertTrue(coldSession.snapshot().bottles[0].charged)
+        coldSession.tapBottle(1)
+        coldSession.tapBottle(0) // повторная сборка уже оплаченной бутылки 0 бесплатна!
+        assertEquals(staminaBeforeUndo, coldSession.snapshot().stamina)
+    }
+
+    @Test
+    fun `закрытие игры на открытом листе карточки при следующем холодном запуске открывает прилавок этого захода с закрытым листом и сохранённым заходом`() {
+        val store = InMemoryGameStateStore()
+        val session = LevelSession.createLiveGame(initialStamina = 110, initialCeiling = 120, store = store)
+        session.onClockTimeMillis(20_000_000L)
+
+        // Переходим в Витебск -> Суворова -> Золотой лев -> уровень 1
+        assertTrue(session.tapCity("Витебск"))
+        assertTrue(session.tapStreet("Суворова"))
+        assertTrue(session.tapBar("Золотой лев"))
+        assertTrue(session.tapLevelCard(1))
+
+        // Делаем 5 из 6 победных ходов уровня 1 (в бутылке 2 собран Guinness Draught, уровень ещё не кончен)
+        for ((from, to) in session.levels[0].solutionMoves.take(5)) {
+            session.tapBottle(from)
+            session.tapBottle(to)
+        }
+        assertEquals(ScreenId.COUNTER, session.snapshot().screen)
+        assertEquals(5, session.snapshot().moves)
+        val expectedBottles = session.snapshot().bottles.map { it.portions }
+
+        // Выбираем бутылку 1 и открываем лист карточки собранного напитка в бутылке 2
+        session.tapBottle(1)
+        assertTrue(session.snapshot().bottles[1].selected)
+        session.tapBottleName(2)
+        val sheetSnap = session.snapshot()
+        assertEquals(ScreenId.DRINK_CARD, sheetSnap.screen)
+        assertNotNull(sheetSnap.drinkCard)
+        assertEquals(Drink.GUINNESS_DRAUGHT, sheetSnap.drinkCard!!.drink)
+
+        // Действие «закрыть приложение» на открытом листе
+        val persisted = session.closeApp(atClockMillis = 20_060_000L)
+        assertTrue(persisted.closedOnActiveRunDrinkSheet)
+        assertTrue(persisted.storedOpenedSheets.isEmpty())
+        assertNull(persisted.storedSelectedBottle)
+
+        // Второй снимок после «закрыть приложение», без живого процесса (холодный запуск через 5 минут):
+        // открывается НЕ мир и НЕ лист, а ПРИЛАВОК этого же незавершённого захода с закрытым листом!
+        val coldSession = LevelSession.coldStartFrom(store, atClockMillis = 20_360_000L)
+        val coldSnap = coldSession.snapshot()
+
+        assertEquals(ScreenId.COUNTER, coldSnap.screen)
+        assertNull(coldSnap.drinkCard)
+        assertNull(coldSnap.openedDrinkSheet)
+        assertEquals("Витебск", coldSnap.cityName)
+        assertEquals("Суворова", coldSnap.streetName)
+        assertEquals("Золотой лев", coldSnap.barName)
+        assertEquals(1, coldSnap.levelNumber)
+        assertEquals("Суворова · Золотой лев · Уровень 1", coldSnap.pathText)
+        assertEquals(5, coldSnap.moves)
+        assertEquals(expectedBottles, coldSnap.bottles.map { it.portions })
+        assertTrue(coldSnap.bottles.none { it.selected }) // выбор бутылки не хранится
+        assertTrue(coldSnap.bottles[2].charged)          // отметка списания на месте
+        assertTrue(coldSnap.undoButton!!.enabled)        // история отмены на месте
+        assertEquals(110 - 1 + 1, coldSnap.stamina)      // -1 за Guinness, +1 за 5 минут при закрытой игре
+        assertEquals(60_000L, coldSnap.recoveryProgressMillis)
+    }
+
+    @Test
+    fun `победа кончает заход в момент плашки а закрытие приложения на плашке или на листе поверх плашки при холодном запуске открывает мир с записанными звёздами и следующий вход начинает новый заход`() {
+        val store = InMemoryGameStateStore()
+        val session = LevelSession.createLiveGame(initialStamina = 120, initialCeiling = 120, store = store)
+        session.onClockTimeMillis(30_000_000L)
+
+        assertTrue(session.tapCity("Минск"))
+        assertTrue(session.tapStreet("Зыбицкая"))
+        assertTrue(session.tapBar("Under"))
+        assertTrue(session.tapLevelCard(1))
+
+        // Проходим уровень 1 до плашки победы (6 ходов, списано 2 выносливости: Guinness 1 + Pilsner 1)
+        for ((from, to) in session.levels[0].solutionMoves) {
+            session.tapBottle(from)
+            session.tapBottle(to)
+        }
+        val winSnap = session.snapshot()
+        assertEquals(ScreenId.VICTORY_BANNER, winSnap.screen)
+        assertEquals(3, winSnap.victoryBanner!!.stars)
+        assertEquals(118, winSnap.stamina)
+
+        // 1. Закрываем игру прямо на плашке победы
+        session.closeApp(atClockMillis = 30_000_000L)
+
+        // Второй снимок после «закрыть приложение», без живого процесса:
+        val coldFromBanner = LevelSession.coldStartFrom(store, atClockMillis = 30_300_000L)
+        val coldBannerSnap = coldFromBanner.snapshot()
+        assertEquals(ScreenId.WORLD_MAP, coldBannerSnap.screen)
+        assertNull(coldBannerSnap.victoryBanner)
+        assertEquals(119, coldBannerSnap.stamina) // +1 за 5 минут
+        assertEquals(
+            "3/336",
+            coldBannerSnap.worldMap!!.cities.first { it.name == "Минск" }.fractionText
+        )
+
+        // Переходим в Under: уровень 1 оценён в 3 звезды, уровень 2 уже открыт
+        assertTrue(coldFromBanner.tapCity("Минск"))
+        assertTrue(coldFromBanner.tapStreet("Зыбицкая"))
+        assertTrue(coldFromBanner.tapBar("Under"))
+        val filmSnap = coldFromBanner.snapshot()
+        assertEquals(ScreenId.LEVEL_FILMSTRIP, filmSnap.screen)
+        assertEquals(3, filmSnap.levelCards[0].bestStars)
+        assertTrue(filmSnap.levelCards[1].unlocked)
+
+        // Следующий вход в уровень 1 начинает НОВЫЙ заход со стартовой расстановки, и бутылки снова списывают выносливость!
+        assertTrue(coldFromBanner.tapLevelCard(1))
+        val newRunSnap = coldFromBanner.snapshot()
+        assertEquals(ScreenId.COUNTER, newRunSnap.screen)
+        assertEquals(0, newRunSnap.moves)
+        assertNull(newRunSnap.victoryBanner)
+        assertEquals(emptySet<Int>(), newRunSnap.chargedBottleIndices)
+        assertEquals(coldFromBanner.levels[0].initialBottles, newRunSnap.bottles.map { it.portions })
+
+        // Проходим уровень 2 и на плашке победы открываем лист карточки по имени собранной бутылки, затем закрываем приложение:
+        // заход уже был кончен в момент плашки, поэтому холодный запуск открывает МИР, а не прилавок с выигранной расстановкой!
+        coldFromBanner.tapBack()
+        assertTrue(coldFromBanner.tapLevelCard(2))
+        for ((from, to) in coldFromBanner.levels[1].solutionMoves) {
+            coldFromBanner.tapBottle(from)
+            coldFromBanner.tapBottle(to)
+        }
+        assertEquals(ScreenId.VICTORY_BANNER, coldFromBanner.snapshot().screen)
+        coldFromBanner.tapBottleName(0) // открываем лист карточки поверх плашки победы
+        assertEquals(ScreenId.DRINK_CARD, coldFromBanner.snapshot().screen)
+
+        val persistedOnWinSheet = coldFromBanner.closeApp(atClockMillis = 30_300_000L)
+        assertFalse(persistedOnWinSheet.closedOnActiveRunDrinkSheet)
+
+        val coldAfterWinSheet = LevelSession.coldStartFrom(store, atClockMillis = 30_300_000L)
+        assertEquals(ScreenId.WORLD_MAP, coldAfterWinSheet.snapshot().screen)
+        assertEquals(
+            "6/336",
+            coldAfterWinSheet.snapshot().worldMap!!.cities.first { it.name == "Минск" }.fractionText
+        )
+    }
+
+    @Test
+    fun `закрытие погибшей игры при холодном запуске снова открывает Персонаж погиб, прошедшие часы персонажа не поднимают, а незавершённые заходы лежат до нажатия Новая игра`() {
+        val store = InMemoryGameStateStore()
+        val session = LevelSession.createLiveGame(initialStamina = 3, initialCeiling = 120, store = store)
+        session.onClockTimeMillis(40_000_000L)
+
+        // Сначала оставляем незавершённый заход в баре Койот (1 ход без списания)
+        assertTrue(session.tapCity("Минск"))
+        assertTrue(session.tapStreet("Зыбицкая"))
+        assertTrue(session.tapBar("Койот"))
+        assertTrue(session.tapLevelCard(1))
+        session.tapBottle(0)
+        session.tapBottle(2) // ход 1 в Койоте
+        session.tapBack()
+        session.tapBack()
+
+        // Идём в бар Under, тратим всю оставшуюся выносливость (3 -> 1 на уровне 2 за Aperol, затем ещё сборка -> 0 -> гибель!)
+        assertTrue(session.tapBar("Under"))
+        assertTrue(session.tapLevelCard(1))
+        for ((from, to) in session.levels[0].solutionMoves.take(5)) {
+            session.tapBottle(from)
+            session.tapBottle(to)
+        }
+        // После 5 ходов на уровне 1 собрана 1 бутылка Guinness (-1: 3 -> 2), а 6-й ход собирает Pilsner (-1: 2 -> 1) -> победа в ур. 1!
+        val lastMove = session.levels[0].solutionMoves[5]
+        session.tapBottle(lastMove.first)
+        session.tapBottle(lastMove.second)
+        assertEquals(1, session.snapshot().stamina)
+        session.tapToLevels()
+
+        // На уровне 2 собираем Aperol (цена 2 при запасе 1 -> запас 0 -> гибель!)
+        assertTrue(session.tapLevelCard(2))
+        session.tapBottle(0)
+        session.tapBottle(2)
+        session.tapBottle(1)
+        session.tapBottle(0) // сборка Aperol -> запас 0 -> Персонаж погиб!
+
+        val defeatBeforeClose = session.snapshot()
+        assertEquals(ScreenId.DEFEAT, defeatBeforeClose.screen)
+        assertEquals(0, defeatBeforeClose.stamina)
+
+        // Закрываем погибшую игру; незавершённые заходы ещё лежат в сохранённом состоянии до нажатия «Новая игра»
+        val persistedDefeat = session.closeApp(atClockMillis = 40_000_000L)
+        assertFalse(persistedDefeat.alive)
+        assertTrue(persistedDefeat.defeated)
+        assertEquals(0, persistedDefeat.stamina)
+        assertNotNull(persistedDefeat.bars.getValue("Койот").levels[0].unfinishedRun)
+        assertNotNull(persistedDefeat.bars.getValue("Under").levels[1].unfinishedRun)
+
+        // Второй снимок после «закрыть приложение», без живого процесса, спустя 60 минут (3_600_000 мс):
+        // прошедшее время персонажа НЕ поднимает, снова открыт экран «Персонаж погиб»!
+        val coldDefeated = LevelSession.coldStartFrom(store, atClockMillis = 43_600_000L)
+        val coldDefeatSnap = coldDefeated.snapshot()
+        assertEquals(ScreenId.DEFEAT, coldDefeatSnap.screen)
+        assertEquals(0, coldDefeatSnap.stamina)
+        assertNotNull(coldDefeatSnap.defeatScreen)
+        assertEquals("Персонаж погиб", coldDefeatSnap.defeatScreen!!.title)
+        assertEquals("Новая игра", coldDefeatSnap.newGameButtonLabel)
+        assertFalse(coldDefeated.canStartLevel())
+
+        // Нажатие «Новая игра» стирает незавершённые заходы, звёзды и открытия и открывает мир 120/120
+        coldDefeated.startNewGame()
+        val afterNewGame = coldDefeated.snapshot()
+        assertEquals(ScreenId.WORLD_MAP, afterNewGame.screen)
+        assertEquals(120, afterNewGame.stamina)
+        assertEquals(120, afterNewGame.staminaCeiling)
+
+        // Проверяем, что незавершённый заход в Койоте снят и в хранилище записана новая живая игра
+        val reloadedAfterNewGame = store.load()!!
+        assertTrue(reloadedAfterNewGame.alive)
+        assertNull(reloadedAfterNewGame.bars.getValue("Койот").levels[0].unfinishedRun)
+        assertNull(reloadedAfterNewGame.bars.getValue("Under").levels[1].unfinishedRun)
+    }
 }
