@@ -3,6 +3,7 @@ package by.bnd.alconavt
 enum class Drink(
     val title: String,
     val strength: String,
+    val enduranceCost: Int,
     val colorDescription: String,
     val drinkingCulture: String,
     val history: String,
@@ -11,6 +12,7 @@ enum class Drink(
     GUINNESS_DRAUGHT(
         title = "Guinness Draught",
         strength = "4,2%",
+        enduranceCost = 1,
         colorDescription = "тёмный рубин, на просвет почти чёрный",
         drinkingCulture = "Чистый сухой бокал и налив в два приёма под 45 градусов; дома из банки — чистый пинтовый бокал. К пинте — пирог со стейком и чеддером.",
         history = "31 декабря 1759 года Артур Гиннесс подписал аренду пивоварни St. James’s Gate на девять тысяч лет; Guinness Draught впервые сварен в 1959 году к двухсотлетию.",
@@ -23,6 +25,7 @@ enum class Drink(
     PILSNER_URQUELL(
         title = "Pilsner Urquell",
         strength = "4,4%",
+        enduranceCost = 1,
         colorDescription = "светло-золотой",
         drinkingCulture = "Длинный узкий бокал на ножке; в танковых пабах — кружка с ручкой. К пиву — чешский гуляш из говядины с хлебными или картофельными кнедликами. Три налива: Hladinka к жирному, Šnyt к гуляшу или бургеру, Mlíko к десерту.",
         history = "5 октября 1842 года Йозеф Гролл сварил первую варку из мягкой пльзеньской воды, жатецкого хмеля и моравского ячменя.",
@@ -35,6 +38,7 @@ enum class Drink(
     APEROL(
         title = "Aperol",
         strength = "11%",
+        enduranceCost = 2,
         colorDescription = "ярко-оранжевый",
         drinkingCulture = "Большой винный бокал со льдом и долькой апельсина. К спритцу — чичетти: кростини, польпетте, аранчини, тараллини, трамеццини, торинези, мясная нарезка, брускетта, маринованные оливки и выдержанные сыры.",
         history = "В 1919 году братья Луиджи и Сильвио Барбьери выпустили аперитив после проб с 1912 года; сначала его пили в Падуе и Венеции; рецепт спритца дом относит к 1950-м.",
@@ -47,6 +51,7 @@ enum class Drink(
     GIFFARD_CREME_DE_VIOLETTE(
         title = "Giffard Crème de Violette",
         strength = "16%",
+        enduranceCost = 2,
         colorDescription = "фиолетовый",
         drinkingCulture = "Отдельного бокала нет; аперитив с сухим белым, розовым или игристым и коктейли. Отдельных блюд к ликёру нет; фиалку дом упоминает в кондитерских изделиях.",
         history = "Дом Эмиля Жиффара с жаркого лета 1885 года и мятного Menthe-Pastille, Анже, семейная компания; стиль крем-де-виолетт — XIX век.",
@@ -59,6 +64,7 @@ enum class Drink(
     BAILEYS_ORIGINAL_IRISH_CREAM(
         title = "Baileys Original Irish Cream",
         strength = "17%",
+        enduranceCost = 2,
         colorDescription = "кремово-бежевый",
         drinkingCulture = "Чистым со льдом, имя бокала не называется. Блюда: полить мороженое, испечь торт, сандей из ванильного мороженого, Baileys и шоколадных крендельков.",
         history = "К 1974 году в рецепте ирландские сливки, ирландский виски, другие спирты, шоколад и ваниль; дом называет напиток первым сливочным ликёром.",
@@ -71,6 +77,7 @@ enum class Drink(
     GIFFARD_LICHI_LI(
         title = "Giffard Lichi-Li",
         strength = "18%",
+        enduranceCost = 2,
         colorDescription = "светло-розовый",
         drinkingCulture = "Чистым на колотом льду, в лонг-дринке или коктейле; отдельного бокала нет.",
         history = "Личи родом из Китая и растёт также в Индии, на Мадагаскаре и в Таиланде. 1885 год — основание дома, не дата Lichi-Li.",
@@ -83,6 +90,7 @@ enum class Drink(
     BOLS_BLUE_CURACAO(
         title = "Bols Blue Curaçao",
         strength = "21%",
+        enduranceCost = 2,
         colorDescription = "ярко-синий",
         drinkingCulture = "Бокал самого ликёра не назван; для Blue Hawaii — хайбол.",
         history = "Дистиллерия ‘t Lootsje в Амстердаме в 1575 году; в 1920-е восьмигранная бутылка и Blue Curacao; в 1926 году первая запись о Crème de Ciel; в 1933 году первая этикетка Bols Blue.",
@@ -95,6 +103,7 @@ enum class Drink(
     CAMPARI(
         title = "Campari",
         strength = "25%",
+        enduranceCost = 2,
         colorDescription = "прозрачный алый",
         drinkingCulture = "Negroni в рокс-тамблере со льдом и долькой апельсина, равные доли Campari, лондонского сухого джина и сладкого красного вермута.",
         history = "В 1860 году Гаспаре Кампари составил жидкость, которую дом с тех пор не менял; в 1867 году открыл Caffè Campari в Галерее Виктора Эммануила II, в тот же год родился Давиде Кампари; в 1915 году Давиде открыл бар Camparino.",
@@ -107,6 +116,7 @@ enum class Drink(
     CHARTREUSE_VERTE(
         title = "Chartreuse Verte",
         strength = "55%",
+        enduranceCost = 3,
         colorDescription = "жёлто-зелёный",
         drinkingCulture = "Дижестив, охлаждённый до 12–13 °C или со льдом; имя бокала не названо. С XIX века ликёр кладут в сладкие и солёные рецепты. Green Chaud — горячий шоколад с ложкой ликёра, взбитыми сливками и какао.",
         history = "В 1840 году из растительного эликсира сделали «ликёр здоровья»; отец Гарнье дал имя Chartreuse Verte и в 1852 году зарегистрировал марку; ликёр делают картезианцы на дистиллерии Эгюнуар в Антр-де-Гье.",
@@ -148,8 +158,16 @@ enum class ScreenId {
     FILM,
     COUNTER,
     DRINK_CARD,
-    VICTORY_BANNER
+    VICTORY_BANNER,
+    DEFEAT
 }
+
+data class DefeatScreenSnapshot(
+    val title: String = "Персонаж погиб",
+    val newGameButtonLabel: String = "Новая игра",
+    val newGameButton: ActionButtonSnapshot = ActionButtonSnapshot(title = newGameButtonLabel, enabled = true),
+    val buttons: List<ActionButtonSnapshot> = listOf(newGameButton)
+)
 
 data class DrinkCardSnapshot(
     val drink: Drink,
@@ -197,6 +215,8 @@ data class BottleSnapshot(
     val freeSpaces: Int,
     val selected: Boolean,
     val completedDrinkName: String? = null,
+    val charged: Boolean = false,
+    val paid: Boolean = charged,
     val glass: GlassGeometrySnapshot = GlassGeometrySnapshot(
         insideCell = true,
         sharedNeck = true,
@@ -229,9 +249,17 @@ data class CounterSnapshot(
     val movesLabel: String,
     val stamina: Int,
     val staminaCeiling: Int,
+    val currentEndurance: Int = stamina,
+    val maxEndurance: Int = staminaCeiling,
+    val enduranceText: String = "$stamina/$staminaCeiling",
     val restartButton: ActionButtonSnapshot?,
-    val undoButton: ActionButtonSnapshot,
+    val undoButton: ActionButtonSnapshot?,
     val victoryBanner: VictoryBannerSnapshot?,
+    val defeatScreen: DefeatScreenSnapshot? = null,
+    val newGameButton: ActionButtonSnapshot? = defeatScreen?.newGameButton,
+    val newGameButtonLabel: String? = defeatScreen?.newGameButtonLabel,
+    val canStartLevel: Boolean = stamina >= 1,
+    val chargedBottleIndices: Set<Int> = emptySet(),
     val screen: ScreenId = ScreenId.COUNTER,
     val drinkCard: DrinkCardSnapshot? = null,
     val openedDrinkSheet: DrinkSheetSnapshot? = null
@@ -239,22 +267,30 @@ data class CounterSnapshot(
 
 class LevelSession(
     private val capacity: Int,
-    initialBottles: List<List<Drink>>
+    initialBottles: List<List<Drink>>,
+    initialStamina: Int = 120,
+    initialCeiling: Int = 120,
+    val barName: String = "Under"
 ) {
     private val startBottles: List<List<Drink>> = initialBottles.map { it.toList() }
     private val bottles: List<MutableList<Drink>> = startBottles.map { it.toMutableList() }
     private val history: MutableList<List<List<Drink>>> = mutableListOf()
+    private val chargedBottles: MutableSet<Int> = mutableSetOf()
     private var selectedIndex: Int? = null
     private var moves: Int = 0
-    private var won: Boolean = isSolved()
+    private var stamina: Int = initialStamina.coerceAtLeast(0)
+    private var staminaCeiling: Int = initialCeiling.coerceAtLeast(1)
+    private var defeated: Boolean = stamina == 0
+    private var won: Boolean = !defeated && isSolved()
     private var openedDrinkCard: Drink? = null
-    private var onCounter: Boolean = true
+    private var onCounter: Boolean = !defeated
 
     fun tapBottle(index: Int) {
         tapBottleGlass(index)
     }
 
     fun tapBottleGlass(index: Int) {
+        if (defeated) return
         if (!onCounter) return
         if (openedDrinkCard != null) return
         if (won) return
@@ -272,6 +308,7 @@ class LevelSession(
     }
 
     fun tapBottleName(index: Int) {
+        if (defeated) return
         if (!onCounter) return
         if (index !in bottles.indices) return
         val completed = completedDrinkOf(bottles[index]) ?: return
@@ -283,6 +320,7 @@ class LevelSession(
     }
 
     fun tapBack() {
+        if (defeated) return
         if (openedDrinkCard != null) {
             openedDrinkCard = null
         } else if (onCounter) {
@@ -291,23 +329,61 @@ class LevelSession(
     }
 
     fun systemBack() {
+        if (defeated) return
         tapBack()
     }
 
     fun leaveCounter() {
+        if (defeated) return
         openedDrinkCard = null
         selectedIndex = null
         onCounter = false
     }
 
     fun enterCounter() {
+        if (!canStartLevel()) return
         openedDrinkCard = null
         selectedIndex = null
         onCounter = true
     }
 
+    fun canStartLevel(): Boolean = !defeated && stamina >= 1
+
+    fun startLevel(): Boolean {
+        if (!canStartLevel()) return false
+        openedDrinkCard = null
+        selectedIndex = null
+        onCounter = true
+        return true
+    }
+
+    fun advanceTimeMinutes(minutes: Int) {
+        if (defeated || minutes <= 0) return
+        val gained = minutes / 5
+        if (gained > 0) {
+            stamina = (stamina + gained).coerceAtMost(staminaCeiling)
+        }
+    }
+
+    fun startNewGame() {
+        stamina = 120
+        staminaCeiling = 120
+        defeated = false
+        startBottles.forEachIndexed { index, portions ->
+            bottles[index].clear()
+            bottles[index].addAll(portions)
+        }
+        history.clear()
+        chargedBottles.clear()
+        moves = 0
+        selectedIndex = null
+        openedDrinkCard = null
+        won = isSolved()
+        onCounter = true
+    }
+
     fun undoMove() {
-        if (!onCounter || openedDrinkCard != null) return
+        if (defeated || !onCounter || openedDrinkCard != null) return
         if (won || history.isEmpty()) return
         val previous = history.removeAt(history.lastIndex)
         previous.forEachIndexed { index, portions ->
@@ -319,7 +395,7 @@ class LevelSession(
     }
 
     fun restartRun() {
-        if (!onCounter || openedDrinkCard != null) return
+        if (defeated || !onCounter || openedDrinkCard != null) return
         if (won || history.isEmpty()) return
         startBottles.forEachIndexed { index, portions ->
             bottles[index].clear()
@@ -355,6 +431,16 @@ class LevelSession(
         dst.addAll(movedPortions)
         moves++
         selectedIndex = null
+        val completed = completedDrinkOf(dst)
+        if (completed != null && chargedBottles.add(toIndex)) {
+            stamina = (stamina - completed.enduranceCost).coerceAtLeast(0)
+        }
+        if (stamina == 0) {
+            defeated = true
+            won = false
+            openedDrinkCard = null
+            return
+        }
         if (isSolved()) {
             won = true
         }
@@ -399,6 +485,7 @@ class LevelSession(
                 freeSpaces = capacity - portions.size,
                 selected = selectedIndex == idx,
                 completedDrinkName = completedDrink?.title,
+                charged = idx in chargedBottles,
                 glass = glass
             )
         }
@@ -408,8 +495,9 @@ class LevelSession(
             else -> 5
         }
         val rows = if (bottleSnapshots.isEmpty()) emptyList() else bottleSnapshots.chunked(columnsPerRow)
-        val cardDrink = if (onCounter) openedDrinkCard else null
-        val canUndoOrRestart = !won && history.isNotEmpty()
+        val cardDrink = if (onCounter && !defeated) openedDrinkCard else null
+        val canUndoOrRestart = !defeated && !won && history.isNotEmpty()
+        val defeatSnap = if (defeated) DefeatScreenSnapshot() else null
         return CounterSnapshot(
             capacity = capacity,
             glass = glass,
@@ -419,12 +507,16 @@ class LevelSession(
             rows = rows,
             moves = moves,
             movesLabel = "ходы",
-            stamina = 120,
-            staminaCeiling = 120,
-            restartButton = if (won) null else ActionButtonSnapshot(title = "Сначала", enabled = canUndoOrRestart),
-            undoButton = ActionButtonSnapshot(title = "Отмена хода", enabled = canUndoOrRestart),
-            victoryBanner = if (won) VictoryBannerSnapshot(title = "Победа", moves = moves) else null,
+            stamina = stamina,
+            staminaCeiling = staminaCeiling,
+            restartButton = if (defeated || won) null else ActionButtonSnapshot(title = "Сначала", enabled = canUndoOrRestart),
+            undoButton = if (defeated) null else ActionButtonSnapshot(title = "Отмена хода", enabled = canUndoOrRestart),
+            victoryBanner = if (!defeated && won) VictoryBannerSnapshot(title = "Победа", moves = moves) else null,
+            defeatScreen = defeatSnap,
+            canStartLevel = !defeated && stamina >= 1,
+            chargedBottleIndices = chargedBottles.toSet(),
             screen = when {
+                defeated -> ScreenId.DEFEAT
                 !onCounter -> ScreenId.FILM
                 cardDrink != null -> ScreenId.DRINK_CARD
                 won -> ScreenId.VICTORY_BANNER

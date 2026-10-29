@@ -28,6 +28,9 @@ class MainActivity : Activity() {
     private lateinit var counterScreen: LinearLayout
     private lateinit var cardSheetScrollView: ScrollView
     private lateinit var cardSheetContent: LinearLayout
+    private lateinit var defeatScreenLayout: LinearLayout
+    private lateinit var defeatTitleView: TextView
+    private lateinit var newGameButtonView: TextView
     private lateinit var staminaView: TextView
     private lateinit var bannerLayout: LinearLayout
     private lateinit var bannerTitleView: TextView
@@ -241,6 +244,57 @@ class MainActivity : Activity() {
             )
         )
 
+        // Экран «Персонаж погиб» с единственной игровой кнопкой «Новая игра»
+        defeatScreenLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#100E14"))
+            val pad = dp(24)
+            setPadding(pad, pad, pad, pad)
+            visibility = View.GONE
+        }
+        defeatTitleView = TextView(this).apply {
+            text = "Персонаж погиб"
+            setTextColor(Color.parseColor("#FF5AD4"))
+            textSize = 26f
+            typeface = Typeface.MONOSPACE
+            gravity = Gravity.CENTER
+        }
+        newGameButtonView = createActionButton().apply {
+            text = "Новая игра"
+            textSize = 18f
+            val hPad = dp(20)
+            val vPad = dp(12)
+            setPadding(hPad, vPad, hPad, vPad)
+            setOnClickListener {
+                session.startNewGame()
+                render()
+            }
+        }
+        defeatScreenLayout.addView(
+            defeatTitleView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dp(24)
+            }
+        )
+        defeatScreenLayout.addView(
+            newGameButtonView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        rootFrame.addView(
+            defeatScreenLayout,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
         if (Build.VERSION.SDK_INT >= 33) {
             val callback = OnBackInvokedCallback {
                 handleSystemBack()
@@ -266,12 +320,18 @@ class MainActivity : Activity() {
 
     private fun handleSystemBack(): Boolean {
         val snap = session.snapshot()
-        return if (snap.screen == ScreenId.DRINK_CARD) {
-            session.systemBack()
-            render()
-            true
-        } else {
-            false
+        return when (snap.screen) {
+            ScreenId.DRINK_CARD -> {
+                session.systemBack()
+                render()
+                true
+            }
+            ScreenId.DEFEAT -> {
+                session.systemBack()
+                render()
+                true
+            }
+            else -> false
         }
     }
 
@@ -302,7 +362,13 @@ class MainActivity : Activity() {
         } else {
             restartButtonView.visibility = View.GONE
         }
-        bindActionButton(undoButtonView, snap.undoButton)
+        val undo = snap.undoButton
+        if (undo != null) {
+            undoButtonView.visibility = View.VISIBLE
+            bindActionButton(undoButtonView, undo)
+        } else {
+            undoButtonView.visibility = View.GONE
+        }
 
         movesValueView.text = snap.moves.toString()
         movesLabelView.text = snap.movesLabel
@@ -401,13 +467,29 @@ class MainActivity : Activity() {
         }
 
         val card = snap.drinkCard
-        if (snap.screen == ScreenId.DRINK_CARD && card != null) {
-            counterScreen.visibility = View.GONE
-            cardSheetScrollView.visibility = View.VISIBLE
-            renderDrinkCardSheet(card)
-        } else {
-            cardSheetScrollView.visibility = View.GONE
-            counterScreen.visibility = View.VISIBLE
+        val defeat = snap.defeatScreen
+        when {
+            snap.screen == ScreenId.DEFEAT -> {
+                counterScreen.visibility = View.GONE
+                cardSheetScrollView.visibility = View.GONE
+                defeatScreenLayout.visibility = View.VISIBLE
+                defeatTitleView.text = defeat?.title ?: "Персонаж погиб"
+                bindActionButton(
+                    newGameButtonView,
+                    defeat?.newGameButton ?: ActionButtonSnapshot(title = "Новая игра", enabled = true)
+                )
+            }
+            snap.screen == ScreenId.DRINK_CARD && card != null -> {
+                counterScreen.visibility = View.GONE
+                defeatScreenLayout.visibility = View.GONE
+                cardSheetScrollView.visibility = View.VISIBLE
+                renderDrinkCardSheet(card)
+            }
+            else -> {
+                cardSheetScrollView.visibility = View.GONE
+                defeatScreenLayout.visibility = View.GONE
+                counterScreen.visibility = View.VISIBLE
+            }
         }
     }
 
