@@ -2564,4 +2564,477 @@ class LevelSessionTest {
             assertEquals(referenceBottles, bottles)
         }
     }
+
+    @Test
+    fun `у бара с первого визита открыт только первый уровень, победа даже с 1 звездой открывает непосредственно следующий, повторная победа в раннем уровне не открывает уровень через один, а гибель ничего не открывает и уже открытый уровень остаётся открытым`() {
+        val level1 = LevelLayout(
+            levelNumber = 1,
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.CHARTREUSE_VERTE, Drink.CHARTREUSE_VERTE),
+                listOf(Drink.CHARTREUSE_VERTE, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                emptyList()
+            )
+        )
+        val level2 = LevelLayout(
+            levelNumber = 2,
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.APEROL, Drink.APEROL),
+                listOf(Drink.APEROL, Drink.PILSNER_URQUELL),
+                listOf(Drink.PILSNER_URQUELL, Drink.PILSNER_URQUELL),
+                emptyList()
+            )
+        )
+        val level3 = LevelLayout(
+            levelNumber = 3,
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.CAMPARI, Drink.CAMPARI),
+                listOf(Drink.CAMPARI, Drink.BOLS_BLUE_CURACAO),
+                listOf(Drink.BOLS_BLUE_CURACAO, Drink.BOLS_BLUE_CURACAO),
+                emptyList()
+            )
+        )
+
+        val session = LevelSession(
+            levels = listOf(level1, level2, level3),
+            streetName = "Зыбицкая",
+            barName = "Under",
+            startOnFilmstrip = true
+        )
+
+        // С первого визита открыт только первый уровень (ярко), уровни 2 и 3 закрыты (тусклые)
+        val initialFilm = session.snapshot()
+        assertEquals(ScreenId.LEVEL_FILMSTRIP, initialFilm.screen)
+        assertEquals(3, initialFilm.levelCards.size)
+        assertEquals(listOf(true, false, false), initialFilm.levelCards.map { it.unlocked })
+        assertEquals(listOf(true, false, false), initialFilm.levelCards.map { it.bright })
+        assertEquals(listOf(0, 0, 0), initialFilm.levelCards.map { it.bestStars })
+
+        // Тап по закрытым карточкам 2 и 3 уровень не начинает
+        assertFalse(session.tapLevelCard(2))
+        assertEquals(ScreenId.LEVEL_FILMSTRIP, session.snapshot().screen)
+        assertFalse(session.tapLevelCard(3))
+        assertEquals(ScreenId.LEVEL_FILMSTRIP, session.snapshot().screen)
+
+        // Тап по открытому уровню 1 начинает заход; выигрываем его на 1 звезду (лишняя трата 3 за пустую бутылку 0 с Chartreuse Verte)
+        assertTrue(session.tapLevelCard(1))
+        assertEquals(ScreenId.COUNTER, session.snapshot().screen)
+        assertEquals(1, session.snapshot().levelNumber)
+
+        session.tapBottle(1)
+        session.tapBottle(3)
+        session.tapBottle(1)
+        session.tapBottle(0) // собрали бутылку 0 (Chartreuse, цена 3)
+        session.tapBottle(0)
+        session.tapBottle(1) // перелили в 1 -> бутылка 0 пуста и оплачена (трата 3)
+        session.tapBottle(3)
+        session.tapBottle(2) // победа с 1 звездой!
+
+        val afterLevel1Win = session.snapshot()
+        assertEquals(ScreenId.VICTORY_BANNER, afterLevel1Win.screen)
+        assertEquals(1, afterLevel1Win.victoryBanner!!.stars)
+        assertEquals(listOf(true, true, false), afterLevel1Win.levelCards.map { it.unlocked })
+        assertEquals(listOf(1, 0, 0), afterLevel1Win.levelCards.map { it.bestStars })
+
+        // Возвращаемся на плёнку и снова проходим уровень 1 (повторная победа на 3 звезды): уровень 3 через непройденный уровень 2 НЕ открывается!
+        session.tapToLevels()
+        assertEquals(ScreenId.LEVEL_FILMSTRIP, session.snapshot().screen)
+
+        assertTrue(session.tapLevelCard(1))
+        session.tapBottle(1)
+        session.tapBottle(2)
+        session.tapBottle(1)
+        session.tapBottle(0) // чистая победа на 3 звезды в уровне 1
+        assertEquals(3, session.snapshot().victoryBanner!!.stars)
+
+        session.tapToLevels()
+        val afterReplayLevel1 = session.snapshot()
+        assertEquals(listOf(true, true, false), afterReplayLevel1.levelCards.map { it.unlocked })
+        assertEquals(listOf(3, 0, 0), afterReplayLevel1.levelCards.map { it.bestStars })
+
+        // Проходим уровень 2 на 3 звезды -> открывается уровень 3
+        assertTrue(session.tapLevelCard(2))
+        session.tapBottle(1)
+        session.tapBottle(2)
+        session.tapBottle(1)
+        session.tapBottle(0)
+        session.tapToLevels()
+        assertEquals(listOf(true, true, true), session.snapshot().levelCards.map { it.unlocked })
+        assertEquals(listOf(3, 3, 0), session.snapshot().levelCards.map { it.bestStars })
+
+        // Худший повтор в уровне 2 (на 2 звезды) не закрывает уже открытый уровень 3 и не снижает лучшие звёзды уровня 2
+        assertTrue(session.tapLevelCard(2))
+        session.tapBottle(1)
+        session.tapBottle(3)
+        session.tapBottle(1)
+        session.tapBottle(0)
+        session.tapBottle(0)
+        session.tapBottle(1) // трата 2 за Aperol -> 2 звезды
+        session.tapBottle(3)
+        session.tapBottle(2)
+        assertEquals(2, session.snapshot().victoryBanner!!.stars)
+        session.tapToLevels()
+        assertEquals(listOf(true, true, true), session.snapshot().levelCards.map { it.unlocked })
+        assertEquals(listOf(3, 3, 0), session.snapshot().levelCards.map { it.bestStars })
+
+        // Гибель на победном ходе ничего не открывает
+        val fatalSession = LevelSession(
+            levels = listOf(level1, level2),
+            initialStamina = 1,
+            startOnFilmstrip = true
+        )
+        assertTrue(fatalSession.tapLevelCard(1))
+        fatalSession.tapBottle(1)
+        fatalSession.tapBottle(2) // тратит последнюю единицу выносливости 1 -> 0 -> гибель!
+        val defeatedSnap = fatalSession.snapshot()
+        assertEquals(ScreenId.DEFEAT, defeatedSnap.screen)
+        assertEquals(listOf(true, false), defeatedSnap.levelCards.map { it.unlocked })
+        assertEquals(listOf(0, 0), defeatedSnap.levelCards.map { it.bestStars })
+    }
+
+    @Test
+    fun `Назад с прилавка и системная Назад открывают плёнку и сохраняют незавершённый заход — расстановку, счётчик, историю отмены и отметки списания без выбора бутылки, а на карточке плёнки незавершённый заход не обозначен и лучшие звёзды остаются`() {
+        val level1 = LevelLayout(
+            levelNumber = 1,
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.APEROL),
+                listOf(Drink.APEROL, Drink.APEROL),
+                emptyList()
+            )
+        )
+        val level2 = LevelLayout(
+            levelNumber = 2,
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.CAMPARI, Drink.CAMPARI),
+                listOf(Drink.CAMPARI, Drink.PILSNER_URQUELL),
+                listOf(Drink.PILSNER_URQUELL, Drink.PILSNER_URQUELL),
+                emptyList()
+            )
+        )
+        val session = LevelSession(levels = listOf(level1, level2))
+
+        // Проходим уровень 1 на 3 звезды
+        session.tapBottle(1)
+        session.tapBottle(2) // Aperol собран в бутылке 2 (-2)
+        session.tapBottle(1)
+        session.tapBottle(0) // Guinness собран в бутылке 0 (-1) -> Победа на 3 звезды!
+        assertEquals(ScreenId.VICTORY_BANNER, session.snapshot().screen)
+        assertEquals(3, session.snapshot().bestStars)
+        assertEquals("К уровням", session.snapshot().victoryBanner!!.toLevelsButtonLabel)
+        assertEquals(ActionButtonSnapshot(title = "К уровням", enabled = true), session.snapshot().victoryBanner!!.toLevelsButton)
+
+        // «К уровням» и системная «Назад» с плашки победы только открывают плёнку и НЕ начинают следующий уровень сами
+        session.tapToLevels()
+        val filmAfterWin = session.snapshot()
+        assertEquals(ScreenId.LEVEL_FILMSTRIP, filmAfterWin.screen)
+        assertEquals(3, filmAfterWin.levelCards[0].bestStars)
+        assertTrue(filmAfterWin.levelCards[1].unlocked)
+        assertEquals(0, filmAfterWin.levelCards[1].bestStars)
+
+        // Следующий тап по выигранному уровню 1 начинает НОВЫЙ заход со стартовой расстановки, и бутылки снова могут списывать выносливость
+        val staminaBeforeReplay = filmAfterWin.stamina
+        assertTrue(session.tapLevelCard(1))
+        val replayStart = session.snapshot()
+        assertEquals(ScreenId.COUNTER, replayStart.screen)
+        assertEquals(0, replayStart.moves)
+        assertNull(replayStart.victoryBanner)
+        assertEquals(emptySet<Int>(), replayStart.chargedBottleIndices)
+        assertEquals(level1.initialBottles, replayStart.bottles.map { it.portions })
+
+        // Делаем 1 ход со сборкой бутылки 2 (Aperol, цена 2) и выбираем бутылку 1 без перелива
+        session.tapBottle(1)
+        session.tapBottle(2) // ход 1, списано 2 за бутылку 2
+        session.tapBottle(1) // выбираем бутылку 1
+        val midReplay = session.snapshot()
+        assertEquals(1, midReplay.moves)
+        assertEquals(staminaBeforeReplay - 2, midReplay.stamina)
+        assertTrue(midReplay.bottles[2].charged)
+        assertTrue(midReplay.bottles[1].selected)
+
+        // Выходим экранной кнопкой «Назад» на плёнку: заход сохраняется, на карточке он НЕ обозначен, а лучшие звёзды (3) остаются!
+        session.tapBack()
+        val filmWithUnfinished = session.snapshot()
+        assertEquals(ScreenId.LEVEL_FILMSTRIP, filmWithUnfinished.screen)
+        assertEquals(3, filmWithUnfinished.levelCards[0].bestStars)
+        assertFalse(filmWithUnfinished.levelCards[0].showsUnfinishedRunIndicator)
+        assertFalse(filmWithUnfinished.levelCards[0].unfinishedRunMarked)
+        assertNull(filmWithUnfinished.restartButton)
+
+        // Тап по уровню 1 продолжает незавершённый заход: расстановка, счётчик (1), история отмены и отметка списания на месте, а выбор бутылки снят!
+        assertTrue(session.tapLevelCard(1))
+        val resumed = session.snapshot()
+        assertEquals(ScreenId.COUNTER, resumed.screen)
+        assertEquals(1, resumed.moves)
+        assertEquals(midReplay.bottles.map { it.portions }, resumed.bottles.map { it.portions })
+        assertTrue(resumed.bottles.none { it.selected })
+        assertTrue(resumed.bottles[2].charged)
+        assertTrue(resumed.undoButton!!.enabled)
+        assertTrue(resumed.restartButton!!.enabled)
+        assertEquals(3, resumed.bestStars)
+
+        // Системная «Назад» с прилавка тоже открывает плёнку и сохраняет заход
+        session.tapBottle(0) // снова выбираем бутылку 0
+        session.systemBack()
+        assertEquals(ScreenId.LEVEL_FILMSTRIP, session.snapshot().screen)
+        assertTrue(session.selectLevel(1))
+        val resumedAfterSystemBack = session.snapshot()
+        assertEquals(1, resumedAfterSystemBack.moves)
+        assertTrue(resumedAfterSystemBack.bottles.none { it.selected })
+        assertTrue(resumedAfterSystemBack.bottles[2].charged)
+
+        // История отмены работает после возвращения из плёнки
+        session.undoMove()
+        assertEquals(0, session.snapshot().moves)
+        assertEquals(level1.initialBottles, session.snapshot().bottles.map { it.portions })
+        assertTrue(session.snapshot().bottles[2].charged)
+    }
+
+    @Test
+    fun `если отмены или Сначала уже вернули стартовую расстановку но отметки списания есть, выход на плёнку сохраняет заход и повторный вход не списывает отмеченные бутылки снова`() {
+        val level1 = LevelLayout(
+            levelNumber = 1,
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.CHARTREUSE_VERTE, Drink.CHARTREUSE_VERTE),
+                listOf(Drink.CHARTREUSE_VERTE, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                emptyList()
+            )
+        )
+        val session = LevelSession(levels = listOf(level1))
+
+        // 1. Случай с «Отмена хода» до стартовой расстановки:
+        // Ход 1: Guinness из 1 в 2 -> бутылка 2 собрана (списана 1 единица: 120 -> 119, бутылка 2 отмечена)
+        session.tapBottle(1)
+        session.tapBottle(2)
+        assertEquals(119, session.snapshot().stamina)
+        assertTrue(session.snapshot().bottles[2].charged)
+
+        // Отменяем единственный ход: на прилавке стартовая расстановка, счётчик 0, история пуста, но отметка списания на бутылке 2 есть!
+        session.undoMove()
+        val atStartWithCharge = session.snapshot()
+        assertEquals(0, atStartWithCharge.moves)
+        assertFalse(atStartWithCharge.undoButton!!.enabled)
+        assertEquals(level1.initialBottles, atStartWithCharge.bottles.map { it.portions })
+        assertTrue(atStartWithCharge.bottles[2].charged)
+
+        // Выходим на плёнку и снова входим в уровень 1
+        session.tapBack()
+        assertEquals(ScreenId.LEVEL_FILMSTRIP, session.snapshot().screen)
+        assertTrue(session.tapLevelCard(1))
+
+        val reenteredAfterUndo = session.snapshot()
+        assertEquals(ScreenId.COUNTER, reenteredAfterUndo.screen)
+        assertEquals(0, reenteredAfterUndo.moves)
+        assertTrue(reenteredAfterUndo.bottles[2].charged)
+        assertEquals(setOf(2), reenteredAfterUndo.chargedBottleIndices)
+
+        // Повторно собираем бутылку 2 — выносливость НЕ списывается снова (остаётся 119)!
+        session.tapBottle(1)
+        session.tapBottle(2)
+        assertEquals(119, session.snapshot().stamina)
+
+        // 2. Случай с кнопкой «Сначала» до стартовой расстановки:
+        session.restartRun()
+        assertEquals(0, session.snapshot().moves)
+        assertTrue(session.snapshot().bottles[2].charged)
+
+        session.systemBack()
+        assertEquals(ScreenId.LEVEL_FILMSTRIP, session.snapshot().screen)
+        assertTrue(session.tapLevelCard(1))
+
+        val reenteredAfterRestart = session.snapshot()
+        assertTrue(reenteredAfterRestart.bottles[2].charged)
+        session.tapBottle(1)
+        session.tapBottle(2)
+        assertEquals(119, session.snapshot().stamina)
+    }
+
+    @Test
+    fun `у разных уровней бара незавершённые заходы хранятся одновременно, не больше одного на уровень, а победа на одном уровне не стирает заход другого`() {
+        val level1 = LevelLayout(
+            levelNumber = 1,
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.PILSNER_URQUELL),
+                listOf(Drink.PILSNER_URQUELL, Drink.PILSNER_URQUELL),
+                emptyList()
+            )
+        )
+        val level2 = LevelLayout(
+            levelNumber = 2,
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.APEROL, Drink.APEROL),
+                listOf(Drink.APEROL, Drink.CAMPARI),
+                listOf(Drink.CAMPARI, Drink.CAMPARI),
+                emptyList()
+            )
+        )
+        val level3 = LevelLayout(
+            levelNumber = 3,
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.BOLS_BLUE_CURACAO, Drink.BOLS_BLUE_CURACAO),
+                listOf(Drink.BOLS_BLUE_CURACAO, Drink.CHARTREUSE_VERTE),
+                listOf(Drink.CHARTREUSE_VERTE, Drink.CHARTREUSE_VERTE),
+                emptyList()
+            )
+        )
+        val session = LevelSession(levels = listOf(level1, level2, level3))
+
+        // Сначала открываем уровни 2 и 3 победами в 1 и 2
+        session.tapBottle(1)
+        session.tapBottle(2)
+        session.tapBottle(1)
+        session.tapBottle(0)
+        session.tapToLevels()
+
+        assertTrue(session.tapLevelCard(2))
+        session.tapBottle(1)
+        session.tapBottle(2)
+        session.tapBottle(1)
+        session.tapBottle(0)
+        session.tapToLevels()
+
+        assertEquals(listOf(true, true, true), session.snapshot().levelCards.map { it.unlocked })
+
+        // Начинаем повтор уровня 1, делаем 1 ход (сборка бутылки 2) и уходим на плёнку
+        assertTrue(session.tapLevelCard(1))
+        session.tapBottle(1)
+        session.tapBottle(2)
+        val level1MidBottles = session.snapshot().bottles.map { it.portions }
+        session.tapBack()
+
+        // Начинаем повтор уровня 2, делаем 1 ход (вылив в пустую бутылку 3 без сборки) и уходим на плёнку
+        assertTrue(session.tapLevelCard(2))
+        session.tapBottle(1)
+        session.tapBottle(3)
+        val level2MidBottles = session.snapshot().bottles.map { it.portions }
+        session.tapBack()
+
+        // Открываем уровень 3 и выигрываем его до конца
+        assertTrue(session.tapLevelCard(3))
+        session.tapBottle(1)
+        session.tapBottle(2)
+        session.tapBottle(1)
+        session.tapBottle(0)
+        assertEquals(ScreenId.VICTORY_BANNER, session.snapshot().screen)
+        // Системная «Назад» с плашки победы открывает плёнку
+        session.systemBack()
+        assertEquals(ScreenId.LEVEL_FILMSTRIP, session.snapshot().screen)
+
+        // Возвращаемся в уровень 1 — его незавершённый заход на месте!
+        assertTrue(session.tapLevelCard(1))
+        val resumed1 = session.snapshot()
+        assertEquals(1, resumed1.levelNumber)
+        assertEquals(1, resumed1.moves)
+        assertEquals(level1MidBottles, resumed1.bottles.map { it.portions })
+        assertTrue(resumed1.bottles[2].charged)
+        session.tapBack()
+
+        // Возвращаемся в уровень 2 — его незавершённый заход тоже на месте!
+        assertTrue(session.tapLevelCard(2))
+        val resumed2 = session.snapshot()
+        assertEquals(2, resumed2.levelNumber)
+        assertEquals(1, resumed2.moves)
+        assertEquals(level2MidBottles, resumed2.bottles.map { it.portions })
+        assertTrue(resumed2.undoButton!!.enabled)
+        session.tapBack()
+
+        // А в выигранном уровне 3 следующий тап начинает новый заход со стартовой расстановки
+        assertTrue(session.tapLevelCard(3))
+        val fresh3 = session.snapshot()
+        assertEquals(3, fresh3.levelNumber)
+        assertEquals(0, fresh3.moves)
+        assertEquals(level3.initialBottles, fresh3.bottles.map { it.portions })
+        assertTrue(fresh3.bottles.none { it.charged })
+    }
+
+    @Test
+    fun `на плёнке видны запас с потолком, подпись состояния и путь без кнопки Сначала, начать уровень при запасе 0 нельзя, а верхняя полоса прилавка называет улицу бар и номер уровня и постоянные расстановки бара решаемы`() {
+        val session = LevelSession(
+            streetName = "Зыбицкая",
+            barName = "Under",
+            initialStamina = 75,
+            initialCeiling = 120,
+            startOnFilmstrip = true
+        )
+
+        // На плёнке видна полоса «запас/потолок», состояние и путь, кнопки «Сначала» и «Отмена хода» отсутствуют
+        val filmSnap = session.snapshot()
+        assertEquals(ScreenId.LEVEL_FILMSTRIP, filmSnap.screen)
+        assertEquals("75/120", filmSnap.enduranceText)
+        assertEquals("Навеселе", filmSnap.stateLabel)
+        assertEquals("Зыбицкая · Under", filmSnap.pathText)
+        assertEquals("75/120", filmSnap.filmstrip.enduranceText)
+        assertEquals("Навеселе", filmSnap.filmstrip.stateLabel)
+        assertEquals("Зыбицкая · Under", filmSnap.filmstrip.pathText)
+        assertNull(filmSnap.restartButton)
+        assertNull(filmSnap.undoButton)
+        assertNull(filmSnap.filmstrip.restartButton)
+        assertEquals(8, filmSnap.levelCards.size)
+
+        // Входим в уровень 1: верхняя полоса прилавка называет улицу, бар и номер уровня
+        assertTrue(session.tapLevelCard(1))
+        val counterSnap = session.snapshot()
+        assertEquals(ScreenId.COUNTER, counterSnap.screen)
+        assertEquals("Зыбицкая", counterSnap.streetName)
+        assertEquals("Under", counterSnap.barName)
+        assertEquals(1, counterSnap.levelNumber)
+        assertEquals("Зыбицкая · Under · Уровень 1", counterSnap.pathText)
+        assertEquals("75/120", counterSnap.enduranceText)
+        assertEquals("Навеселе", counterSnap.stateLabel)
+
+        // Проверяем все постоянные расстановки бара по умолчанию:
+        // у каждой ровно две пустые бутылки, остальные полные и смешанные, все порции видимы, и прогон по порядку открывает и решает все уровни бара
+        val solveAllSession = LevelSession(startOnFilmstrip = true)
+        assertEquals(8, solveAllSession.levels.size)
+
+        for ((idx, layout) in solveAllSession.levels.withIndex()) {
+            val levelNum = idx + 1
+            assertEquals(levelNum, layout.levelNumber)
+            val emptyCount = layout.initialBottles.count { it.isEmpty() }
+            assertEquals("На уровне $levelNum должно быть ровно 2 пустые бутылки", 2, emptyCount)
+            val nonEmpty = layout.initialBottles.filter { it.isNotEmpty() }
+            assertTrue(nonEmpty.all { it.size == layout.capacity })
+            assertTrue(nonEmpty.all { it.toSet().size >= 2 })
+
+            // До победы открыт текущий уровень, а следующий (если есть) ещё закрыт
+            val filmBefore = solveAllSession.snapshot()
+            assertEquals(ScreenId.LEVEL_FILMSTRIP, filmBefore.screen)
+            assertTrue(filmBefore.levelCards[idx].unlocked)
+            if (idx + 1 < solveAllSession.levels.size) {
+                assertFalse(filmBefore.levelCards[idx + 1].unlocked)
+            }
+
+            assertTrue(solveAllSession.tapLevelCard(levelNum))
+            assertEquals("Зыбицкая · Under · Уровень $levelNum", solveAllSession.snapshot().pathText)
+
+            for ((from, to) in layout.solutionMoves) {
+                solveAllSession.tapBottle(from)
+                solveAllSession.tapBottle(to)
+            }
+            val wonSnap = solveAllSession.snapshot()
+            assertEquals(ScreenId.VICTORY_BANNER, wonSnap.screen)
+            assertEquals(layout.parMoves, wonSnap.moves)
+            assertEquals(3, wonSnap.victoryBanner!!.stars)
+
+            solveAllSession.tapToLevels()
+            assertEquals(3, solveAllSession.snapshot().levelCards[idx].bestStars)
+        }
+
+        // При запасе 0 начать уровень с плёнки нельзя
+        val zeroSession = LevelSession(initialStamina = 0, startOnFilmstrip = true)
+        assertFalse(zeroSession.canStartLevel())
+        assertFalse(zeroSession.tapLevelCard(1))
+        assertEquals(ScreenId.DEFEAT, zeroSession.snapshot().screen)
+    }
 }

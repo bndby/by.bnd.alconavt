@@ -181,12 +181,152 @@ data class BottleIllustrationSnapshot(
 )
 
 enum class ScreenId {
-    FILM,
+    LEVEL_FILMSTRIP,
     COUNTER,
     DRINK_CARD,
     VICTORY_BANNER,
-    DEFEAT
+    DEFEAT;
+
+    companion object {
+        val FILM: ScreenId get() = LEVEL_FILMSTRIP
+    }
 }
+
+data class LevelLayout(
+    val levelNumber: Int,
+    val capacity: Int,
+    val initialBottles: List<List<Drink>>,
+    val parMoves: Int = 0,
+    val solutionMoves: List<Pair<Int, Int>> = emptyList()
+)
+
+data class LevelCardSnapshot(
+    val levelNumber: Int,
+    val unlocked: Boolean,
+    val bright: Boolean = unlocked,
+    val dimmed: Boolean = !unlocked,
+    val bestStars: Int = 0,
+    val stars: Int = bestStars,
+    val completed: Boolean = bestStars > 0,
+    val showsUnfinishedRunIndicator: Boolean = false,
+    val unfinishedRunMarked: Boolean = false
+)
+
+data class FilmstripSnapshot(
+    val streetName: String,
+    val barName: String,
+    val pathText: String,
+    val stamina: Int,
+    val staminaCeiling: Int,
+    val enduranceText: String,
+    val intoxicationState: IntoxicationState?,
+    val stateLabel: String,
+    val cards: List<LevelCardSnapshot>,
+    val restartButton: ActionButtonSnapshot? = null
+)
+
+val DEFAULT_UNDER_LEVELS: List<LevelLayout> = listOf(
+    LevelLayout(
+        levelNumber = 1,
+        capacity = 3,
+        initialBottles = listOf(
+            listOf(Drink.GUINNESS_DRAUGHT, Drink.PILSNER_URQUELL, Drink.GUINNESS_DRAUGHT),
+            listOf(Drink.PILSNER_URQUELL, Drink.GUINNESS_DRAUGHT, Drink.PILSNER_URQUELL),
+            emptyList(),
+            emptyList()
+        ),
+        parMoves = 6,
+        solutionMoves = listOf(0 to 2, 0 to 3, 1 to 3, 1 to 2, 0 to 2, 1 to 3)
+    ),
+    LevelLayout(
+        levelNumber = 2,
+        capacity = 3,
+        initialBottles = listOf(
+            listOf(Drink.APEROL, Drink.APEROL, Drink.CAMPARI),
+            listOf(Drink.CAMPARI, Drink.CAMPARI, Drink.APEROL),
+            emptyList(),
+            emptyList()
+        ),
+        parMoves = 3,
+        solutionMoves = listOf(0 to 2, 1 to 0, 1 to 2)
+    ),
+    LevelLayout(
+        levelNumber = 3,
+        capacity = 3,
+        initialBottles = listOf(
+            listOf(Drink.BOLS_BLUE_CURACAO, Drink.CHARTREUSE_VERTE, Drink.BOLS_BLUE_CURACAO),
+            listOf(Drink.CHARTREUSE_VERTE, Drink.BOLS_BLUE_CURACAO, Drink.CHARTREUSE_VERTE),
+            emptyList(),
+            emptyList()
+        ),
+        parMoves = 6,
+        solutionMoves = listOf(0 to 2, 0 to 3, 1 to 3, 1 to 2, 0 to 2, 1 to 3)
+    ),
+    LevelLayout(
+        levelNumber = 4,
+        capacity = 3,
+        initialBottles = listOf(
+            listOf(Drink.GIFFARD_CREME_DE_VIOLETTE, Drink.GIFFARD_LICHI_LI, Drink.GIFFARD_CREME_DE_VIOLETTE),
+            listOf(Drink.GIFFARD_LICHI_LI, Drink.GIFFARD_CREME_DE_VIOLETTE, Drink.GIFFARD_LICHI_LI),
+            emptyList(),
+            emptyList()
+        ),
+        parMoves = 6,
+        solutionMoves = listOf(0 to 2, 0 to 3, 1 to 3, 1 to 2, 0 to 2, 1 to 3)
+    ),
+    LevelLayout(
+        levelNumber = 5,
+        capacity = 3,
+        initialBottles = listOf(
+            listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT, Drink.PILSNER_URQUELL),
+            listOf(Drink.PILSNER_URQUELL, Drink.PILSNER_URQUELL, Drink.BAILEYS_ORIGINAL_IRISH_CREAM),
+            listOf(Drink.BAILEYS_ORIGINAL_IRISH_CREAM, Drink.BAILEYS_ORIGINAL_IRISH_CREAM, Drink.GUINNESS_DRAUGHT),
+            emptyList(),
+            emptyList()
+        ),
+        parMoves = 4,
+        solutionMoves = listOf(0 to 3, 2 to 0, 1 to 2, 3 to 1)
+    ),
+    LevelLayout(
+        levelNumber = 6,
+        capacity = 3,
+        initialBottles = listOf(
+            listOf(Drink.APEROL, Drink.APEROL, Drink.CAMPARI),
+            listOf(Drink.CAMPARI, Drink.CAMPARI, Drink.CHARTREUSE_VERTE),
+            listOf(Drink.CHARTREUSE_VERTE, Drink.CHARTREUSE_VERTE, Drink.APEROL),
+            emptyList(),
+            emptyList()
+        ),
+        parMoves = 4,
+        solutionMoves = listOf(0 to 3, 2 to 0, 1 to 2, 3 to 1)
+    ),
+    LevelLayout(
+        levelNumber = 7,
+        capacity = 3,
+        initialBottles = listOf(
+            listOf(Drink.BOLS_BLUE_CURACAO, Drink.BOLS_BLUE_CURACAO, Drink.GIFFARD_CREME_DE_VIOLETTE),
+            listOf(Drink.GIFFARD_CREME_DE_VIOLETTE, Drink.GIFFARD_CREME_DE_VIOLETTE, Drink.GIFFARD_LICHI_LI),
+            listOf(Drink.GIFFARD_LICHI_LI, Drink.GIFFARD_LICHI_LI, Drink.BOLS_BLUE_CURACAO),
+            emptyList(),
+            emptyList()
+        ),
+        parMoves = 4,
+        solutionMoves = listOf(0 to 3, 2 to 0, 1 to 2, 3 to 1)
+    ),
+    LevelLayout(
+        levelNumber = 8,
+        capacity = 3,
+        initialBottles = listOf(
+            listOf(Drink.BAILEYS_ORIGINAL_IRISH_CREAM, Drink.BAILEYS_ORIGINAL_IRISH_CREAM, Drink.GUINNESS_DRAUGHT),
+            listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT, Drink.CHARTREUSE_VERTE),
+            listOf(Drink.CHARTREUSE_VERTE, Drink.CHARTREUSE_VERTE, Drink.BAILEYS_ORIGINAL_IRISH_CREAM),
+            emptyList(),
+            emptyList()
+        ),
+        parMoves = 4,
+        solutionMoves = listOf(0 to 3, 2 to 0, 1 to 2, 3 to 1)
+    )
+)
 
 enum class IntoxicationState(
     val label: String,
@@ -287,7 +427,9 @@ data class VictoryBannerSnapshot(
     val title: String,
     val moves: Int,
     val stars: Int = 3,
-    val extraWaste: Int = 0
+    val extraWaste: Int = 0,
+    val toLevelsButtonLabel: String = "К уровням",
+    val toLevelsButton: ActionButtonSnapshot = ActionButtonSnapshot(title = toLevelsButtonLabel, enabled = true)
 )
 
 data class CounterSnapshot(
@@ -326,21 +468,89 @@ data class CounterSnapshot(
     val bestStars: Int = 0,
     val recordedStars: Int = bestStars,
     val screen: ScreenId = ScreenId.COUNTER,
+    val streetName: String = "Зыбицкая",
+    val barName: String = "Under",
+    val levelNumber: Int = 1,
+    val pathText: String = if (screen == ScreenId.LEVEL_FILMSTRIP) "$streetName · $barName" else "$streetName · $barName · Уровень $levelNumber",
+    val backButtonLabel: String = "Назад",
+    val backButton: ActionButtonSnapshot? = if (screen == ScreenId.DEFEAT) null else ActionButtonSnapshot(title = backButtonLabel, enabled = true),
+    val levelCards: List<LevelCardSnapshot> = emptyList(),
+    val filmstrip: FilmstripSnapshot = FilmstripSnapshot(
+        streetName = streetName,
+        barName = barName,
+        pathText = "$streetName · $barName",
+        stamina = stamina,
+        staminaCeiling = staminaCeiling,
+        enduranceText = "$stamina/$staminaCeiling",
+        intoxicationState = intoxicationState,
+        stateLabel = stateLabel,
+        cards = levelCards,
+        restartButton = null
+    ),
     val drinkCard: DrinkCardSnapshot? = null,
     val openedDrinkSheet: DrinkSheetSnapshot? = null
 )
 
+private data class SavedRunState(
+    val bottles: List<List<Drink>>,
+    val history: List<List<List<Drink>>>,
+    val chargedBottles: Map<Int, Int>,
+    val moves: Int
+)
+
 class LevelSession(
-    private val capacity: Int,
-    initialBottles: List<List<Drink>>,
+    val levels: List<LevelLayout> = DEFAULT_UNDER_LEVELS,
+    val streetName: String = "Зыбицкая",
+    val barName: String = "Under",
     initialStamina: Int = 120,
     initialCeiling: Int = 120,
-    val barName: String = "Under",
-    val parMoves: Int = 0,
-    initialRecoveryProgressMillis: Long = 0L
+    initialRecoveryProgressMillis: Long = 0L,
+    private val startOnFilmstrip: Boolean = false
 ) {
-    private val startBottles: List<List<Drink>> = initialBottles.map { it.toList() }
-    private val bottles: List<MutableList<Drink>> = startBottles.map { it.toMutableList() }
+    constructor(
+        capacity: Int,
+        initialBottles: List<List<Drink>>,
+        initialStamina: Int = 120,
+        initialCeiling: Int = 120,
+        barName: String = "Under",
+        parMoves: Int = 0,
+        initialRecoveryProgressMillis: Long = 0L,
+        streetName: String = "Зыбицкая"
+    ) : this(
+        levels = listOf(
+            LevelLayout(
+                levelNumber = 1,
+                capacity = capacity,
+                initialBottles = initialBottles,
+                parMoves = parMoves
+            )
+        ),
+        streetName = streetName,
+        barName = barName,
+        initialStamina = initialStamina,
+        initialCeiling = initialCeiling,
+        initialRecoveryProgressMillis = initialRecoveryProgressMillis,
+        startOnFilmstrip = false
+    )
+
+    private val barLevels: List<LevelLayout> = if (levels.isNotEmpty()) {
+        levels.mapIndexed { idx, layout ->
+            layout.copy(
+                levelNumber = idx + 1,
+                initialBottles = layout.initialBottles.map { it.toList() }
+            )
+        }
+    } else {
+        DEFAULT_UNDER_LEVELS
+    }
+
+    private var activeLevelIndex: Int = 0
+    private val unlockedLevels: BooleanArray = BooleanArray(barLevels.size) { it == 0 }
+    private val bestStarsByLevel: IntArray = IntArray(barLevels.size) { 0 }
+    private val unfinishedRuns: MutableMap<Int, SavedRunState> = mutableMapOf()
+
+    private var startBottles: List<List<Drink>> = barLevels[0].initialBottles.map { it.toList() }
+    private var bottles: MutableList<MutableList<Drink>> = startBottles.map { it.toMutableList() }.toMutableList()
     private val history: MutableList<List<List<Drink>>> = mutableListOf()
     private val chargedBottles: MutableMap<Int, Int> = mutableMapOf()
     private var selectedIndex: Int? = null
@@ -350,10 +560,108 @@ class LevelSession(
     private var recoveryRemainderMillis: Long = initialRecoveryProgressMillis.coerceIn(0L, 299_999L)
     private var lastClockTimeMillis: Long? = null
     private var defeated: Boolean = stamina == 0
-    private var won: Boolean = !defeated && isSolved()
-    private var bestStars: Int = if (won) currentRunStars() else 0
+    private var won: Boolean = !defeated && !startOnFilmstrip && isSolved()
     private var openedDrinkCard: Drink? = null
-    private var onCounter: Boolean = !defeated
+    private var onCounter: Boolean = !defeated && !startOnFilmstrip
+
+    val parMoves: Int
+        get() = barLevels[activeLevelIndex].parMoves
+
+    private val capacity: Int
+        get() = barLevels[activeLevelIndex].capacity
+
+    init {
+        if (won) {
+            recordVictoryForActiveLevel()
+        }
+    }
+
+    private fun recordVictoryForActiveLevel() {
+        val stars = currentRunStars()
+        if (stars > bestStarsByLevel[activeLevelIndex]) {
+            bestStarsByLevel[activeLevelIndex] = stars
+        }
+        if (activeLevelIndex + 1 < unlockedLevels.size) {
+            unlockedLevels[activeLevelIndex + 1] = true
+        }
+        unfinishedRuns.remove(activeLevelIndex)
+    }
+
+    private fun saveCurrentRunIfUnfinished() {
+        if (defeated || !onCounter) return
+        if (won) {
+            unfinishedRuns.remove(activeLevelIndex)
+            return
+        }
+        val hasProgressOrCharges =
+            moves > 0 || history.isNotEmpty() || chargedBottles.isNotEmpty() || bottles != startBottles
+        if (hasProgressOrCharges) {
+            unfinishedRuns[activeLevelIndex] = SavedRunState(
+                bottles = bottles.map { it.toList() },
+                history = history.map { snap -> snap.map { it.toList() } },
+                chargedBottles = chargedBottles.toMap(),
+                moves = moves
+            )
+        } else {
+            unfinishedRuns.remove(activeLevelIndex)
+        }
+    }
+
+    private fun loadLevelIntoCounter(levelIndex: Int, forceNewRun: Boolean = false) {
+        activeLevelIndex = levelIndex
+        val layout = barLevels[levelIndex]
+        startBottles = layout.initialBottles.map { it.toList() }
+        val saved = if (forceNewRun) {
+            unfinishedRuns.remove(levelIndex)
+            null
+        } else {
+            unfinishedRuns[levelIndex]
+        }
+        if (saved != null) {
+            bottles = saved.bottles.map { it.toMutableList() }.toMutableList()
+            history.clear()
+            history.addAll(saved.history.map { snap -> snap.map { it.toList() } })
+            chargedBottles.clear()
+            chargedBottles.putAll(saved.chargedBottles)
+            moves = saved.moves
+            won = false
+        } else {
+            bottles = startBottles.map { it.toMutableList() }.toMutableList()
+            history.clear()
+            chargedBottles.clear()
+            moves = 0
+            won = isSolved()
+            if (won) {
+                recordVictoryForActiveLevel()
+            }
+        }
+        selectedIndex = null
+        openedDrinkCard = null
+        onCounter = true
+    }
+
+    fun tapLevelCard(levelNumber: Int): Boolean {
+        if (!canStartLevel()) return false
+        val index = levelNumber - 1
+        if (index !in barLevels.indices) return false
+        if (!unlockedLevels[index]) return false
+        if (onCounter) {
+            saveCurrentRunIfUnfinished()
+        }
+        loadLevelIntoCounter(index, forceNewRun = false)
+        return true
+    }
+
+    fun selectLevel(levelNumber: Int): Boolean = tapLevelCard(levelNumber)
+
+    fun tapToLevels() {
+        if (defeated) return
+        leaveCounter()
+    }
+
+    fun tapVictoryToLevels() {
+        tapToLevels()
+    }
 
     fun tapBottle(index: Int) {
         tapBottleGlass(index)
@@ -405,6 +713,9 @@ class LevelSession(
 
     fun leaveCounter() {
         if (defeated) return
+        if (onCounter) {
+            saveCurrentRunIfUnfinished()
+        }
         openedDrinkCard = null
         selectedIndex = null
         onCounter = false
@@ -412,45 +723,29 @@ class LevelSession(
 
     fun enterCounter() {
         if (!canStartLevel()) return
-        if (won) {
-            resetForNewRun()
+        if (onCounter && won) {
+            loadLevelIntoCounter(activeLevelIndex, forceNewRun = true)
+            return
         }
-        openedDrinkCard = null
-        selectedIndex = null
-        onCounter = true
+        loadLevelIntoCounter(activeLevelIndex, forceNewRun = false)
     }
 
     fun canStartLevel(): Boolean = !defeated && stamina >= 1
 
-    fun startLevel(): Boolean {
-        if (!canStartLevel()) return false
-        if (won) {
-            resetForNewRun()
-        }
-        openedDrinkCard = null
-        selectedIndex = null
-        onCounter = true
-        return true
+    fun startLevel(levelNumber: Int = activeLevelIndex + 1): Boolean {
+        return tapLevelCard(levelNumber)
     }
 
-    fun startNewRun(): Boolean {
+    fun startNewRun(levelNumber: Int = activeLevelIndex + 1): Boolean {
         if (!canStartLevel()) return false
-        resetForNewRun()
-        openedDrinkCard = null
-        selectedIndex = null
-        onCounter = true
-        return true
-    }
-
-    private fun resetForNewRun() {
-        startBottles.forEachIndexed { index, portions ->
-            bottles[index].clear()
-            bottles[index].addAll(portions)
+        val index = levelNumber - 1
+        if (index !in barLevels.indices) return false
+        if (!unlockedLevels[index]) return false
+        if (onCounter && index != activeLevelIndex) {
+            saveCurrentRunIfUnfinished()
         }
-        history.clear()
-        chargedBottles.clear()
-        moves = 0
-        won = isSolved()
+        loadLevelIntoCounter(index, forceNewRun = true)
+        return true
     }
 
     fun advanceTimeMillis(deltaMs: Long) {
@@ -504,18 +799,24 @@ class LevelSession(
         recoveryRemainderMillis = 0L
         lastClockTimeMillis = null
         defeated = false
-        startBottles.forEachIndexed { index, portions ->
-            bottles[index].clear()
-            bottles[index].addAll(portions)
+        for (i in unlockedLevels.indices) {
+            unlockedLevels[i] = (i == 0)
+            bestStarsByLevel[i] = 0
         }
+        unfinishedRuns.clear()
+        activeLevelIndex = 0
+        startBottles = barLevels[0].initialBottles.map { it.toList() }
+        bottles = startBottles.map { it.toMutableList() }.toMutableList()
         history.clear()
         chargedBottles.clear()
         moves = 0
         selectedIndex = null
         openedDrinkCard = null
-        won = isSolved()
-        bestStars = if (won) currentRunStars() else 0
-        onCounter = true
+        won = !startOnFilmstrip && isSolved()
+        if (won) {
+            recordVictoryForActiveLevel()
+        }
+        onCounter = !startOnFilmstrip
     }
 
     fun undoMove() {
@@ -580,7 +881,7 @@ class LevelSession(
         }
         if (isSolved()) {
             won = true
-            bestStars = maxOf(bestStars, currentRunStars())
+            recordVictoryForActiveLevel()
         }
     }
 
@@ -649,10 +950,32 @@ class LevelSession(
         }
         val rows = if (bottleSnapshots.isEmpty()) emptyList() else bottleSnapshots.chunked(columnsPerRow)
         val cardDrink = if (onCounter && !defeated) openedDrinkCard else null
-        val canUndoOrRestart = !defeated && !won && history.isNotEmpty()
+        val currentScreen = when {
+            defeated -> ScreenId.DEFEAT
+            !onCounter -> ScreenId.LEVEL_FILMSTRIP
+            cardDrink != null -> ScreenId.DRINK_CARD
+            won -> ScreenId.VICTORY_BANNER
+            else -> ScreenId.COUNTER
+        }
+        val canUndoOrRestart = !defeated && onCounter && !won && history.isNotEmpty()
         val defeatSnap = if (defeated) DefeatScreenSnapshot() else null
         val waste = currentExtraWaste()
         val runStars = currentRunStars()
+        val cards = barLevels.indices.map { idx ->
+            LevelCardSnapshot(
+                levelNumber = idx + 1,
+                unlocked = unlockedLevels[idx],
+                bright = unlockedLevels[idx],
+                dimmed = !unlockedLevels[idx],
+                bestStars = bestStarsByLevel[idx],
+                stars = bestStarsByLevel[idx],
+                completed = bestStarsByLevel[idx] > 0,
+                showsUnfinishedRunIndicator = false,
+                unfinishedRunMarked = false
+            )
+        }
+        val currentLevelNum = activeLevelIndex + 1
+        val currentBestStars = bestStarsByLevel[activeLevelIndex]
         return CounterSnapshot(
             capacity = capacity,
             glass = glass,
@@ -665,22 +988,37 @@ class LevelSession(
             stamina = stamina,
             staminaCeiling = staminaCeiling,
             recoveryProgressMillis = recoveryRemainderMillis,
-            restartButton = if (defeated || won) null else ActionButtonSnapshot(title = "Сначала", enabled = canUndoOrRestart),
-            undoButton = if (defeated) null else ActionButtonSnapshot(title = "Отмена хода", enabled = canUndoOrRestart),
-            victoryBanner = if (!defeated && won) VictoryBannerSnapshot(title = "Победа", moves = moves, stars = runStars, extraWaste = waste) else null,
+            streetName = streetName,
+            barName = barName,
+            levelNumber = currentLevelNum,
+            pathText = if (currentScreen == ScreenId.LEVEL_FILMSTRIP) {
+                "$streetName · $barName"
+            } else {
+                "$streetName · $barName · Уровень $currentLevelNum"
+            },
+            restartButton = if (defeated || !onCounter || won || cardDrink != null) {
+                null
+            } else {
+                ActionButtonSnapshot(title = "Сначала", enabled = canUndoOrRestart)
+            },
+            undoButton = if (defeated || !onCounter || cardDrink != null) {
+                null
+            } else {
+                ActionButtonSnapshot(title = "Отмена хода", enabled = canUndoOrRestart)
+            },
+            victoryBanner = if (!defeated && onCounter && won) {
+                VictoryBannerSnapshot(title = "Победа", moves = moves, stars = runStars, extraWaste = waste)
+            } else {
+                null
+            },
             defeatScreen = defeatSnap,
             canStartLevel = !defeated && stamina >= 1,
             chargedBottleIndices = chargedBottles.keys.toSet(),
             extraWaste = waste,
-            bestStars = bestStars,
-            recordedStars = bestStars,
-            screen = when {
-                defeated -> ScreenId.DEFEAT
-                !onCounter -> ScreenId.FILM
-                cardDrink != null -> ScreenId.DRINK_CARD
-                won -> ScreenId.VICTORY_BANNER
-                else -> ScreenId.COUNTER
-            },
+            bestStars = currentBestStars,
+            recordedStars = currentBestStars,
+            screen = currentScreen,
+            levelCards = cards,
             drinkCard = cardDrink?.toCardSnapshot(),
             openedDrinkSheet = cardDrink?.let { DrinkSheetSnapshot(drink = it, title = it.title) }
         )

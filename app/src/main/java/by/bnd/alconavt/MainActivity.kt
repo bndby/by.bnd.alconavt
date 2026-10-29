@@ -18,6 +18,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -30,7 +31,14 @@ class MainActivity : Activity() {
     private lateinit var session: LevelSession
     private lateinit var backgroundBackdropView: BarBackdropView
     private lateinit var neonSignView: TextView
+    private lateinit var counterBackButtonView: TextView
+    private lateinit var counterPathView: TextView
     private lateinit var counterScreen: LinearLayout
+    private lateinit var filmstripScreen: LinearLayout
+    private lateinit var filmstripPathView: TextView
+    private lateinit var filmstripStaminaView: TextView
+    private lateinit var filmstripStateLabelView: TextView
+    private lateinit var filmstripCardsRow: LinearLayout
     private lateinit var cardSheetScrollView: ScrollView
     private lateinit var cardSheetContent: LinearLayout
     private lateinit var defeatScreenLayout: LinearLayout
@@ -42,6 +50,7 @@ class MainActivity : Activity() {
     private lateinit var bannerTitleView: TextView
     private lateinit var bannerStarsView: TextView
     private lateinit var bannerMovesView: TextView
+    private lateinit var bannerToLevelsButtonView: TextView
     private lateinit var rackContainer: LinearLayout
     private lateinit var restartButtonView: TextView
     private lateinit var undoButtonView: TextView
@@ -56,6 +65,8 @@ class MainActivity : Activity() {
             val snap = session.snapshot()
             staminaView.text = snap.enduranceText
             stateLabelView.text = snap.stateLabel
+            filmstripStaminaView.text = snap.filmstrip.enduranceText
+            filmstripStateLabelView.text = snap.filmstrip.stateLabel
             updateAmbianceFrame(snap)
             uiHandler.postDelayed(this, 60L)
         }
@@ -64,15 +75,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        session = LevelSession(
-            capacity = 3,
-            initialBottles = listOf(
-                listOf(Drink.GUINNESS_DRAUGHT, Drink.PILSNER_URQUELL, Drink.GUINNESS_DRAUGHT),
-                listOf(Drink.PILSNER_URQUELL, Drink.GUINNESS_DRAUGHT, Drink.PILSNER_URQUELL),
-                emptyList(),
-                emptyList()
-            )
-        )
+        session = LevelSession(startOnFilmstrip = true)
         session.onClockTimeMillis(System.currentTimeMillis())
 
         val rootFrame = FrameLayout(this).apply {
@@ -88,23 +91,141 @@ class MainActivity : Activity() {
             )
         )
 
+        // Плёнка уровней бара (ScreenId.LEVEL_FILMSTRIP)
+        filmstripScreen = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = dp(16)
+            setPadding(pad, pad, pad, pad)
+            visibility = View.GONE
+        }
+
+        val filmstripTopBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        filmstripPathView = TextView(this).apply {
+            setTextColor(Color.parseColor("#FF5AD4"))
+            textSize = 15f
+            typeface = Typeface.MONOSPACE
+        }
+        val filmstripEnduranceGroup = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL or Gravity.END
+        }
+        filmstripStaminaView = TextView(this).apply {
+            setTextColor(Color.parseColor("#FFE56A"))
+            textSize = 20f
+            typeface = Typeface.MONOSPACE
+        }
+        filmstripStateLabelView = TextView(this).apply {
+            setTextColor(Color.parseColor("#79F6FF"))
+            textSize = 16f
+            typeface = Typeface.MONOSPACE
+            val padH = dp(8)
+            val padV = dp(2)
+            setPadding(padH, padV, padH, padV)
+        }
+        filmstripEnduranceGroup.addView(filmstripStaminaView)
+        filmstripEnduranceGroup.addView(
+            filmstripStateLabelView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                leftMargin = dp(8)
+            }
+        )
+        filmstripTopBar.addView(
+            filmstripPathView,
+            LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f
+            )
+        )
+        filmstripTopBar.addView(
+            filmstripEnduranceGroup,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        filmstripScreen.addView(
+            filmstripTopBar,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        filmstripCardsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            val padV = dp(16)
+            setPadding(0, padV, 0, padV)
+        }
+        val filmstripScrollView = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(
+                filmstripCardsRow,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER_VERTICAL
+                )
+            )
+        }
+        filmstripScreen.addView(
+            filmstripScrollView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+
         counterScreen = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             val pad = dp(16)
             setPadding(pad, pad, pad, pad)
         }
 
-        // Верхняя полоса прилавка: декоративная неоновая вывеска бара, запас/потолок и подпись состояния (без отдельной шкалы опьянения)
+        // Верхняя полоса прилавка: кнопка «Назад», путь (улица · бар · уровень), запас/потолок и подпись состояния
         val topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
+        counterBackButtonView = TextView(this).apply {
+            text = "Назад"
+            setTextColor(Color.parseColor("#FF5AD4"))
+            textSize = 13f
+            typeface = Typeface.MONOSPACE
+            val padH = dp(8)
+            val padV = dp(6)
+            setPadding(padH, padV, padH, padV)
+            background = strokeBox(Color.parseColor("#FF5AD4"))
+            setOnClickListener {
+                session.tapBack()
+                render()
+            }
+        }
+        val pathAndSignGroup = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
         neonSignView = TextView(this).apply {
             text = session.barName.uppercase()
             setTextColor(Color.parseColor("#FF5AD4"))
-            textSize = 18f
+            textSize = 15f
             typeface = Typeface.MONOSPACE
         }
+        counterPathView = TextView(this).apply {
+            setTextColor(Color.parseColor("#F6F1E8"))
+            textSize = 12f
+            typeface = Typeface.MONOSPACE
+        }
+        pathAndSignGroup.addView(neonSignView)
+        pathAndSignGroup.addView(counterPathView)
+
         val enduranceGroup = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
@@ -133,7 +254,16 @@ class MainActivity : Activity() {
             }
         )
         topBar.addView(
-            neonSignView,
+            counterBackButtonView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                rightMargin = dp(8)
+            }
+        )
+        topBar.addView(
+            pathAndSignGroup,
             LinearLayout.LayoutParams(
                 0,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -155,7 +285,7 @@ class MainActivity : Activity() {
             )
         )
 
-        // Плашка «Победа» на том же прилавке
+        // Плашка «Победа» на том же прилавке со звёздами, числом ходов и кнопкой «К уровням»
         bannerLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -179,9 +309,24 @@ class MainActivity : Activity() {
             textSize = 16f
             gravity = Gravity.CENTER
         }
+        bannerToLevelsButtonView = createActionButton().apply {
+            setOnClickListener {
+                session.tapToLevels()
+                render()
+            }
+        }
         bannerLayout.addView(bannerTitleView)
         bannerLayout.addView(bannerStarsView)
         bannerLayout.addView(bannerMovesView)
+        bannerLayout.addView(
+            bannerToLevelsButtonView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dp(8)
+            }
+        )
         counterScreen.addView(
             bannerLayout,
             LinearLayout.LayoutParams(
@@ -308,6 +453,13 @@ class MainActivity : Activity() {
         }
 
         rootFrame.addView(
+            filmstripScreen,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        rootFrame.addView(
             counterScreen,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -399,11 +551,9 @@ class MainActivity : Activity() {
     private fun handleSystemBack(): Boolean {
         val snap = session.snapshot()
         return when (snap.screen) {
-            ScreenId.DRINK_CARD -> {
-                session.systemBack()
-                render()
-                true
-            }
+            ScreenId.DRINK_CARD,
+            ScreenId.COUNTER,
+            ScreenId.VICTORY_BANNER,
             ScreenId.DEFEAT -> {
                 session.systemBack()
                 render()
@@ -452,6 +602,12 @@ class MainActivity : Activity() {
         val snap = session.snapshot()
         staminaView.text = snap.enduranceText
         stateLabelView.text = snap.stateLabel
+        neonSignView.text = snap.barName.uppercase()
+        counterPathView.text = snap.pathText
+        counterBackButtonView.text = snap.backButtonLabel
+        filmstripPathView.text = snap.filmstrip.pathText
+        filmstripStaminaView.text = snap.filmstrip.enduranceText
+        filmstripStateLabelView.text = snap.filmstrip.stateLabel
         updateAmbianceFrame(snap)
 
         val banner = snap.victoryBanner
@@ -460,6 +616,7 @@ class MainActivity : Activity() {
             bannerTitleView.text = banner.title
             bannerStarsView.text = "★".repeat(banner.stars) + "☆".repeat((3 - banner.stars).coerceAtLeast(0))
             bannerMovesView.text = "${snap.movesLabel}: ${banner.moves}"
+            bindActionButton(bannerToLevelsButtonView, banner.toLevelsButton)
         } else {
             bannerLayout.visibility = View.GONE
         }
@@ -579,6 +736,7 @@ class MainActivity : Activity() {
         val defeat = snap.defeatScreen
         when {
             snap.screen == ScreenId.DEFEAT -> {
+                filmstripScreen.visibility = View.GONE
                 counterScreen.visibility = View.GONE
                 cardSheetScrollView.visibility = View.GONE
                 defeatScreenLayout.visibility = View.VISIBLE
@@ -588,17 +746,108 @@ class MainActivity : Activity() {
                     defeat?.newGameButton ?: ActionButtonSnapshot(title = "Новая игра", enabled = true)
                 )
             }
+            snap.screen == ScreenId.LEVEL_FILMSTRIP -> {
+                counterScreen.visibility = View.GONE
+                cardSheetScrollView.visibility = View.GONE
+                defeatScreenLayout.visibility = View.GONE
+                filmstripScreen.visibility = View.VISIBLE
+                renderFilmstripCards(snap.levelCards)
+            }
             snap.screen == ScreenId.DRINK_CARD && card != null -> {
+                filmstripScreen.visibility = View.GONE
                 counterScreen.visibility = View.GONE
                 defeatScreenLayout.visibility = View.GONE
                 cardSheetScrollView.visibility = View.VISIBLE
                 renderDrinkCardSheet(card)
             }
             else -> {
+                filmstripScreen.visibility = View.GONE
                 cardSheetScrollView.visibility = View.GONE
                 defeatScreenLayout.visibility = View.GONE
                 counterScreen.visibility = View.VISIBLE
             }
+        }
+    }
+
+    private fun renderFilmstripCards(cards: List<LevelCardSnapshot>) {
+        filmstripCardsRow.removeAllViews()
+        cards.forEach { card ->
+            val strokeColor = when {
+                !card.unlocked -> Color.parseColor("#3A3644")
+                card.bestStars > 0 -> Color.parseColor("#FFE56A")
+                else -> Color.parseColor("#79F6FF")
+            }
+            val bgColor = when {
+                !card.unlocked -> Color.parseColor("#18161C")
+                card.bestStars > 0 -> Color.parseColor("#241E0E")
+                else -> Color.parseColor("#12363A")
+            }
+            val textColor = when {
+                !card.unlocked -> Color.parseColor("#6D6878")
+                card.bestStars > 0 -> Color.parseColor("#FFE56A")
+                else -> Color.parseColor("#79F6FF")
+            }
+
+            val cardLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                val pad = dp(10)
+                setPadding(pad, pad, pad, pad)
+                background = GradientDrawable().apply {
+                    setColor(bgColor)
+                    setStroke(dp(2), strokeColor)
+                }
+                alpha = if (card.bright) 1f else 0.55f
+                isClickable = card.unlocked
+                if (card.unlocked) {
+                    setOnClickListener {
+                        if (session.tapLevelCard(card.levelNumber)) {
+                            render()
+                        }
+                    }
+                }
+            }
+
+            val numView = TextView(this).apply {
+                text = card.levelNumber.toString()
+                setTextColor(textColor)
+                textSize = 26f
+                typeface = Typeface.MONOSPACE
+                gravity = Gravity.CENTER
+            }
+            val statusText = when {
+                !card.unlocked -> "закрыт"
+                card.bestStars > 0 -> "★".repeat(card.bestStars)
+                else -> "открыт"
+            }
+            val statusView = TextView(this).apply {
+                text = statusText
+                setTextColor(textColor)
+                textSize = 14f
+                typeface = Typeface.MONOSPACE
+                gravity = Gravity.CENTER
+            }
+
+            cardLayout.addView(
+                numView,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f
+                )
+            )
+            cardLayout.addView(
+                statusView,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+
+            val params = LinearLayout.LayoutParams(dp(104), dp(140)).apply {
+                rightMargin = dp(8)
+            }
+            filmstripCardsRow.addView(cardLayout, params)
         }
     }
 
