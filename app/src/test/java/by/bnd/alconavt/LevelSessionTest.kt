@@ -219,7 +219,7 @@ class LevelSessionTest {
 
         val won = session.snapshot()
         assertEquals(6, won.moves)
-        assertEquals(120, won.stamina)
+        assertEquals(118, won.stamina)
         assertEquals(120, won.staminaCeiling)
         assertEquals(emptyList<Drink>(), won.bottles[0].portions)
         assertEquals(emptyList<Drink>(), won.bottles[1].portions)
@@ -418,10 +418,10 @@ class LevelSessionTest {
                 emptyList()
             )
         )
-        assertFalse(startCompletedSession.snapshot().undoButton.enabled)
+        assertFalse(startCompletedSession.snapshot().undoButton!!.enabled)
         startCompletedSession.tapBottleName(0)
         startCompletedSession.tapBack()
-        assertFalse(startCompletedSession.snapshot().undoButton.enabled)
+        assertFalse(startCompletedSession.snapshot().undoButton!!.enabled)
         assertEquals(0, startCompletedSession.snapshot().moves)
 
         // Собираем бутылку 0 за два хода и выбираем бутылку 2
@@ -670,7 +670,7 @@ class LevelSessionTest {
         assertEquals(listOf(Drink.CAMPARI, Drink.PILSNER_URQUELL), afterFirstUndo.bottles[1].portions)
         assertEquals(listOf(Drink.GUINNESS_DRAUGHT), afterFirstUndo.bottles[2].portions)
         assertEquals(emptyList<Drink>(), afterFirstUndo.bottles[3].portions)
-        assertTrue(afterFirstUndo.undoButton.enabled)
+        assertTrue(afterFirstUndo.undoButton!!.enabled)
         assertTrue(afterFirstUndo.restartButton!!.enabled)
 
         // Вторая отмена возвращает ход 1 (GUINNESS обратно на APEROL в бутылку 0) — стартовая расстановка
@@ -681,7 +681,7 @@ class LevelSessionTest {
         assertEquals(listOf(Drink.CAMPARI, Drink.PILSNER_URQUELL), atStart.bottles[1].portions)
         assertEquals(emptyList<Drink>(), atStart.bottles[2].portions)
         assertEquals(emptyList<Drink>(), atStart.bottles[3].portions)
-        assertFalse(atStart.undoButton.enabled)
+        assertFalse(atStart.undoButton!!.enabled)
         assertFalse(atStart.restartButton!!.enabled)
 
         // Повторный вызов undoMove при пустой истории ничего не меняет и не уводит счётчик в минус
@@ -809,7 +809,7 @@ class LevelSessionTest {
         val afterRestartFromDeadEnd = strictDeadEnd.snapshot()
         assertEquals(0, afterRestartFromDeadEnd.moves)
         assertEquals(emptyList<Drink>(), afterRestartFromDeadEnd.bottles[3].portions)
-        assertFalse(afterRestartFromDeadEnd.undoButton.enabled)
+        assertFalse(afterRestartFromDeadEnd.undoButton!!.enabled)
         assertFalse(afterRestartFromDeadEnd.restartButton!!.enabled)
     }
 
@@ -1044,5 +1044,344 @@ class LevelSessionTest {
         val longAfterDisassemble = longCounter.snapshot()
         assertNull(longAfterDisassemble.bottles[1].completedDrinkName)
         assertEquals("Guinness Draught", longAfterDisassemble.bottles[9].completedDrinkName)
+    }
+
+    @Test
+    fun `первая сборка бутылки в заходе списывает выносливость по цене напитка, простое переливание ничего не списывает, вместимость и бар цену не меняют`() {
+        val session = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT, Drink.APEROL),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.APEROL),
+                emptyList(),
+                emptyList()
+            )
+        )
+
+        val initial = session.snapshot()
+        assertEquals(120, initial.stamina)
+        assertEquals(120, initial.staminaCeiling)
+        assertEquals(120, initial.currentEndurance)
+        assertEquals(120, initial.maxEndurance)
+        assertEquals("120/120", initial.enduranceText)
+
+        // Простое переливание без сборки бутылки до вместимости ничего не списывает
+        session.tapBottle(0)
+        session.tapBottle(2)
+        val afterSimplePour = session.snapshot()
+        assertEquals(120, afterSimplePour.stamina)
+        assertEquals(120, afterSimplePour.currentEndurance)
+        assertEquals("120/120", afterSimplePour.enduranceText)
+
+        session.tapBottle(1)
+        session.tapBottle(2)
+        assertEquals(120, session.snapshot().currentEndurance)
+
+        // Первая сборка Guinness Draught (цена 1) до вместимости 3 списывает 1
+        session.tapBottle(1)
+        session.tapBottle(0)
+        val afterFirstCompleted = session.snapshot()
+        assertEquals("Guinness Draught", afterFirstCompleted.bottles[0].completedDrinkName)
+        assertEquals(119, afterFirstCompleted.stamina)
+        assertEquals(119, afterFirstCompleted.currentEndurance)
+        assertEquals(120, afterFirstCompleted.maxEndurance)
+        assertEquals("119/120", afterFirstCompleted.enduranceText)
+
+        // Цены всех 9 напитков: 1 (Guinness, Pilsner), 2 (Aperol, Violette, Baileys, Lichi-Li, Blue Curacao, Campari), 3 (Chartreuse)
+        val expectedPrices = mapOf(
+            Drink.GUINNESS_DRAUGHT to 1,
+            Drink.PILSNER_URQUELL to 1,
+            Drink.APEROL to 2,
+            Drink.GIFFARD_CREME_DE_VIOLETTE to 2,
+            Drink.BAILEYS_ORIGINAL_IRISH_CREAM to 2,
+            Drink.GIFFARD_LICHI_LI to 2,
+            Drink.BOLS_BLUE_CURACAO to 2,
+            Drink.CAMPARI to 2,
+            Drink.CHARTREUSE_VERTE to 3
+        )
+        for ((drink, expectedCost) in expectedPrices) {
+            for (cap in listOf(3, 6)) {
+                val s = LevelSession(
+                    capacity = cap,
+                    initialBottles = listOf(
+                        List(cap - 1) { drink },
+                        listOf(drink, Drink.PILSNER_URQUELL.takeIf { it != drink } ?: Drink.GUINNESS_DRAUGHT),
+                        emptyList(),
+                        emptyList()
+                    )
+                )
+                s.tapBottle(1)
+                s.tapBottle(2)
+                assertEquals(120, s.snapshot().currentEndurance)
+                s.tapBottle(1)
+                s.tapBottle(0)
+                assertEquals(120 - expectedCost, s.snapshot().currentEndurance)
+            }
+        }
+    }
+
+    @Test
+    fun `повторная сборка той же бутылки в том же заходе ничего не списывает, две собранные бутылки одного напитка списывают дважды, а отмена хода и Сначала запас не возвращают и отметку списания не снимают`() {
+        val session = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.CHARTREUSE_VERTE, Drink.CHARTREUSE_VERTE),
+                listOf(Drink.CHARTREUSE_VERTE, Drink.APEROL),
+                emptyList(),
+                emptyList()
+            )
+        )
+
+        // Освобождаем верхний APEROL из бутылки 1 в 2 (без сборки — 120)
+        session.tapBottle(1)
+        session.tapBottle(2)
+        assertEquals(120, session.snapshot().currentEndurance)
+        assertFalse(session.snapshot().bottles[0].charged)
+
+        // Собираем бутылку 0 напитком Chartreuse Verte (цена 3): 120 -> 117, бутылка 0 помечена
+        session.tapBottle(1)
+        session.tapBottle(0)
+        val afterFirstAssemble = session.snapshot()
+        assertEquals(117, afterFirstAssemble.currentEndurance)
+        assertTrue(afterFirstAssemble.bottles[0].charged)
+        assertFalse(afterFirstAssemble.bottles[1].charged)
+        assertFalse(afterFirstAssemble.bottles[3].charged)
+
+        // Переливаем собранную бутылку 0 целиком в пустую бутылку 3: вторая бутылка того же напитка списывает ещё 3 (117 -> 114)
+        session.tapBottle(0)
+        session.tapBottle(3)
+        val afterSecondBottleAssemble = session.snapshot()
+        assertEquals(114, afterSecondBottleAssemble.currentEndurance)
+        assertTrue(afterSecondBottleAssemble.bottles[0].charged)
+        assertTrue(afterSecondBottleAssemble.bottles[3].charged)
+
+        // Возвращаем обратно из бутылки 3 в уже отмеченную бутылку 0: повторная сборка той же бутылки в том же заходе ничего не списывает (остаётся 114)
+        session.tapBottle(3)
+        session.tapBottle(0)
+        val afterReassembleSameBottle = session.snapshot()
+        assertEquals(114, afterReassembleSameBottle.currentEndurance)
+        assertEquals("Chartreuse Verte", afterReassembleSameBottle.bottles[0].completedDrinkName)
+
+        // Отмена хода не возвращает потраченный запас и не снимает отметки списания
+        session.undoMove() // откат перелива 3 -> 0
+        session.undoMove() // откат перелива 0 -> 3
+        session.undoMove() // откат первой сборки 1 -> 0
+        val afterUndos = session.snapshot()
+        assertEquals(114, afterUndos.currentEndurance)
+        assertNull(afterUndos.bottles[0].completedDrinkName)
+        assertTrue(afterUndos.bottles[0].charged)
+        assertTrue(afterUndos.bottles[3].charged)
+
+        // Повторная сборка отмеченной бутылки 0 после отмены бесплатна (остаётся 114)
+        session.tapBottle(1)
+        session.tapBottle(0)
+        assertEquals(114, session.snapshot().currentEndurance)
+        assertEquals("Chartreuse Verte", session.snapshot().bottles[0].completedDrinkName)
+
+        // «Сначала» не возвращает потраченный запас и не снимает отметки списания
+        session.restartRun()
+        val afterRestart = session.snapshot()
+        assertEquals(0, afterRestart.moves)
+        assertEquals(114, afterRestart.currentEndurance)
+        assertTrue(afterRestart.bottles[0].charged)
+        assertTrue(afterRestart.bottles[3].charged)
+        assertEquals(setOf(0, 3), afterRestart.chargedBottleIndices)
+
+        // Повторная сборка отмеченной бутылки 0 после «Сначала» бесплатна
+        session.tapBottle(1)
+        session.tapBottle(2)
+        session.tapBottle(1)
+        session.tapBottle(0)
+        val afterRebuildPostRestart = session.snapshot()
+        assertEquals(114, afterRebuildPostRestart.currentEndurance)
+        assertEquals("Chartreuse Verte", afterRebuildPostRestart.bottles[0].completedDrinkName)
+
+        // А первая сборка ещё не отмеченной бутылки 1 списывает 3 (114 -> 111)
+        session.tapBottle(0)
+        session.tapBottle(1)
+        val afterThirdBottleCharged = session.snapshot()
+        assertEquals(111, afterThirdBottleCharged.currentEndurance)
+        assertTrue(afterThirdBottleCharged.bottles[1].charged)
+    }
+
+    @Test
+    fun `запас опускается до 0 и ниже нуля не уходит, а списание до 0 открывает экран Персонаж погиб до проверки победы — если тот же ход собрал уровень и оставил 0, победы нет`() {
+        // 1. Запас 1 и сборка Chartreuse Verte (цена 3) опускают запас ровно до 0, а не в минус, и открывают гибель без победы
+        val session = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.CHARTREUSE_VERTE, Drink.CHARTREUSE_VERTE),
+                listOf(Drink.CHARTREUSE_VERTE),
+                emptyList(),
+                emptyList()
+            ),
+            initialStamina = 1
+        )
+
+        val beforeFatalMove = session.snapshot()
+        assertEquals(1, beforeFatalMove.currentEndurance)
+        assertEquals(ScreenId.COUNTER, beforeFatalMove.screen)
+        assertTrue(beforeFatalMove.canStartLevel)
+
+        // Ход собирает последнюю бутылку уровня, но списывает выносливость с 1 до 0
+        session.tapBottle(1)
+        session.tapBottle(0)
+
+        val defeated = session.snapshot()
+        assertEquals(0, defeated.stamina)
+        assertEquals(0, defeated.currentEndurance)
+        assertEquals("0/120", defeated.enduranceText)
+        assertEquals(ScreenId.DEFEAT, defeated.screen)
+        assertNull(defeated.victoryBanner)
+        assertNotNull(defeated.defeatScreen)
+        assertEquals("Персонаж погиб", defeated.defeatScreen!!.title)
+        assertEquals("Новая игра", defeated.defeatScreen!!.newGameButtonLabel)
+        assertEquals("Новая игра", defeated.newGameButtonLabel)
+        assertEquals(ActionButtonSnapshot(title = "Новая игра", enabled = true), defeated.newGameButton)
+        assertNull(defeated.restartButton)
+        assertNull(defeated.undoButton)
+    }
+
+    @Test
+    fun `на экране гибели одна кнопка Новая игра, Отмена хода и Сначала отсутствуют, системная Назад экран не закрывает и новую игру не начинает, ожидание не поднимает запас с нуля, а Новая игра ставит 120 из 120, снимает отметки списания и открывает живой прилавок со стартовой расстановкой`() {
+        val session = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.APEROL),
+                emptyList(),
+                emptyList()
+            ),
+            initialStamina = 1,
+            initialCeiling = 135
+        )
+
+        // Запас 1 позволяет начать уровень
+        assertTrue(session.snapshot().canStartLevel)
+        assertEquals(ScreenId.COUNTER, session.snapshot().screen)
+
+        // Ход 1: APEROL из 1 в 2
+        session.tapBottle(1)
+        session.tapBottle(2)
+        assertEquals(1, session.snapshot().currentEndurance)
+
+        // Ход 2: первая сборка Guinness Draught (цена 1) при запасе 1 доводит запас до 0 -> экран гибели
+        session.tapBottle(1)
+        session.tapBottle(0)
+
+        val onDefeat = session.snapshot()
+        assertEquals(ScreenId.DEFEAT, onDefeat.screen)
+        assertEquals(0, onDefeat.currentEndurance)
+        assertFalse(onDefeat.canStartLevel)
+        assertNull(onDefeat.restartButton)
+        assertNull(onDefeat.undoButton)
+        assertNull(onDefeat.victoryBanner)
+        assertNotNull(onDefeat.defeatScreen)
+        assertEquals("Персонаж погиб", onDefeat.defeatScreen!!.title)
+        assertEquals(listOf("Новая игра"), onDefeat.defeatScreen!!.buttons.map { it.title })
+
+        // На экране гибели перелив, отмена хода, Сначала, системная Назад, попытка войти в уровень и ожидание ничего не меняют
+        session.tapBottle(0)
+        session.tapBottle(3)
+        session.tapBottleName(0)
+        session.undoMove()
+        session.restartRun()
+        session.systemBack()
+        session.tapBack()
+        session.enterCounter()
+        session.startLevel()
+        session.advanceTimeMinutes(600)
+
+        val stillDefeated = session.snapshot()
+        assertEquals(ScreenId.DEFEAT, stillDefeated.screen)
+        assertEquals(0, stillDefeated.currentEndurance)
+        assertFalse(stillDefeated.canStartLevel)
+        assertNull(stillDefeated.drinkCard)
+        assertNull(stillDefeated.restartButton)
+        assertNull(stillDefeated.undoButton)
+
+        // «Новая игра» ставит запас и потолок 120/120, снимает отметки списания и незавершённый заход и снова открывает живой прилавок со стартовой расстановкой
+        session.startNewGame()
+
+        val afterNewGame = session.snapshot()
+        assertEquals(ScreenId.COUNTER, afterNewGame.screen)
+        assertEquals(120, afterNewGame.stamina)
+        assertEquals(120, afterNewGame.staminaCeiling)
+        assertEquals(120, afterNewGame.currentEndurance)
+        assertEquals(120, afterNewGame.maxEndurance)
+        assertEquals("120/120", afterNewGame.enduranceText)
+        assertTrue(afterNewGame.canStartLevel)
+        assertNull(afterNewGame.defeatScreen)
+        assertNull(afterNewGame.victoryBanner)
+        assertEquals(0, afterNewGame.moves)
+        assertEquals(emptySet<Int>(), afterNewGame.chargedBottleIndices)
+        assertTrue(afterNewGame.bottles.none { it.charged })
+        assertTrue(afterNewGame.bottles.none { it.selected })
+        assertEquals(listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT), afterNewGame.bottles[0].portions)
+        assertEquals(listOf(Drink.GUINNESS_DRAUGHT, Drink.APEROL), afterNewGame.bottles[1].portions)
+        assertEquals(emptyList<Drink>(), afterNewGame.bottles[2].portions)
+        assertEquals(emptyList<Drink>(), afterNewGame.bottles[3].portions)
+        assertEquals(ActionButtonSnapshot(title = "Сначала", enabled = false), afterNewGame.restartButton)
+        assertEquals(ActionButtonSnapshot(title = "Отмена хода", enabled = false), afterNewGame.undoButton)
+
+        // В новой игре первая сборка бутылки 0 снова списывает выносливость (120 -> 119), так как отметки списания сняты
+        session.tapBottle(1)
+        session.tapBottle(2)
+        session.tapBottle(1)
+        session.tapBottle(0)
+        val afterAssembleInNewGame = session.snapshot()
+        assertEquals(119, afterAssembleInNewGame.currentEndurance)
+        assertTrue(afterAssembleInNewGame.bottles[0].charged)
+    }
+
+    @Test
+    fun `уровень можно начать только при запасе хотя бы 1, а при запасе 1 первая сборка любого напитка доводит запас до 0`() {
+        val zeroEnduranceSession = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT),
+                emptyList(),
+                emptyList()
+            ),
+            initialStamina = 0
+        )
+
+        assertFalse(zeroEnduranceSession.canStartLevel())
+        assertFalse(zeroEnduranceSession.snapshot().canStartLevel)
+        assertEquals(ScreenId.DEFEAT, zeroEnduranceSession.snapshot().screen)
+        assertFalse(zeroEnduranceSession.startLevel())
+        zeroEnduranceSession.enterCounter()
+        assertEquals(ScreenId.DEFEAT, zeroEnduranceSession.snapshot().screen)
+
+        // При запасе 1 уровень можно начать, и первая сборка любого из 9 напитков доводит запас до 0 и открывает гибель
+        for (drink in Drink.entries) {
+            val oneEnduranceSession = LevelSession(
+                capacity = 3,
+                initialBottles = listOf(
+                    listOf(drink, drink),
+                    listOf(drink, Drink.PILSNER_URQUELL.takeIf { it != drink } ?: Drink.GUINNESS_DRAUGHT),
+                    emptyList(),
+                    emptyList()
+                ),
+                initialStamina = 1
+            )
+            assertTrue(oneEnduranceSession.canStartLevel())
+            assertTrue(oneEnduranceSession.snapshot().canStartLevel)
+            assertTrue(oneEnduranceSession.startLevel())
+            assertEquals(ScreenId.COUNTER, oneEnduranceSession.snapshot().screen)
+
+            oneEnduranceSession.tapBottle(1)
+            oneEnduranceSession.tapBottle(2)
+            assertEquals(1, oneEnduranceSession.snapshot().currentEndurance)
+            assertEquals(ScreenId.COUNTER, oneEnduranceSession.snapshot().screen)
+
+            oneEnduranceSession.tapBottle(1)
+            oneEnduranceSession.tapBottle(0)
+            val snap = oneEnduranceSession.snapshot()
+            assertEquals(0, snap.currentEndurance)
+            assertEquals(ScreenId.DEFEAT, snap.screen)
+            assertNull(snap.victoryBanner)
+        }
     }
 }
