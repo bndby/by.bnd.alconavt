@@ -3037,4 +3037,392 @@ class LevelSessionTest {
         assertFalse(zeroSession.tapLevelCard(1))
         assertEquals(ScreenId.DEFEAT, zeroSession.snapshot().screen)
     }
+
+    @Test
+    fun `живой запуск открывает мир на весь экран без колонки ступеней без свободного зума и без ступени страны, с тихими границами без дальних кусков, яркими городами с дробью звёзд и тусклыми городами без дроби`() {
+        val session = LevelSession.createLiveGame()
+        val snap = session.snapshot()
+
+        assertEquals(ScreenId.WORLD_MAP, snap.screen)
+        assertEquals("120/120", snap.enduranceText)
+        assertEquals("Трезв", snap.stateLabel)
+        assertEquals("Мир", snap.pathText)
+        assertFalse(snap.hasBackButton)
+        assertNull(snap.backButton)
+        assertNull(snap.backButtonLabel)
+        assertNull(snap.worldMapNotice)
+
+        val world = snap.worldMap
+        assertNotNull(world)
+        assertFalse(world!!.hasStepColumn)
+        assertFalse(world.hasFreeZoom)
+        assertFalse(world.countryIsStep)
+        assertTrue(world.usesCustomPixelMap)
+        assertFalse(world.usesThirdPartyTiles)
+        assertTrue(world.northOnTop)
+        assertFalse(world.citiesArtificiallySpread)
+        assertEquals(
+            listOf("Польша", "Литва", "Латвия", "Эстония", "Украина", "Беларусь — Россия"),
+            world.quietBorders
+        )
+        assertEquals(
+            listOf("Калининград", "Сахалин", "Чукотка", "Камчатка", "Новая Земля", "Крым"),
+            world.excludedRegions
+        )
+
+        val brightCities = world.cities.filter { it.bright }
+        assertEquals(listOf("Минск", "Витебск", "Москва"), brightCities.map { it.name })
+        assertEquals(listOf("0/336", "0/168", "0/120"), brightCities.map { it.fractionText })
+        assertEquals(listOf(0 to 336, 0 to 168, 0 to 120), brightCities.map { it.earnedStars to it.totalStars })
+
+        val dimmedCities = world.cities.filter { !it.bright }
+        assertEquals(listOf("Могилёв", "Гомель", "Смоленск", "Ленинград"), dimmedCities.map { it.name })
+        assertTrue(dimmedCities.all { it.dimmed && it.fractionText == null && it.earnedStars == null && it.totalStars == null })
+
+        // Тап по тусклому городу не меняет масштаб и сообщает, что уровни появятся позже
+        for (dimmedName in listOf("Могилёв", "Гомель", "Смоленск", "Ленинград")) {
+            assertFalse(session.tapCity(dimmedName))
+            val afterDimTap = session.snapshot()
+            assertEquals(ScreenId.WORLD_MAP, afterDimTap.screen)
+            assertEquals("В городе $dimmedName уровни появятся позже.", afterDimTap.worldMapNotice)
+            assertEquals("В городе $dimmedName уровни появятся позже.", afterDimTap.noticeText)
+            assertEquals("В городе $dimmedName уровни появятся позже.", afterDimTap.worldMap!!.noticeText)
+        }
+    }
+
+    @Test
+    fun `тап по яркому городу открывает контур города с яркой игровой улицей и тусклыми прочими, а тап по яркой улице открывает контур улицы с барами по порядку хода`() {
+        val session = LevelSession.createLiveGame()
+
+        // 1. Минск -> Зыбицкая
+        assertTrue(session.tapCity("Минск"))
+        val minskSnap = session.snapshot()
+        assertEquals(ScreenId.CITY_MAP, minskSnap.screen)
+        assertEquals("Минск", minskSnap.cityName)
+        assertEquals("Минск", minskSnap.pathText)
+        assertTrue(minskSnap.hasBackButton)
+        assertEquals("Назад", minskSnap.backButtonLabel)
+        assertNotNull(minskSnap.cityMap)
+        assertEquals("Зыбицкая", minskSnap.cityMap!!.playableStreet.name)
+        assertTrue(minskSnap.cityMap!!.playableStreet.bright)
+        assertTrue(minskSnap.cityMap!!.playableStreet.description.contains("400 м"))
+        assertTrue(minskSnap.cityMap!!.streets.filter { !it.bright }.isNotEmpty())
+        assertTrue(minskSnap.cityMap!!.streets.filter { !it.bright }.all { it.dimmed })
+
+        // Тап по тусклой улице в городе не меняет масштаб
+        val dimMinskStreet = minskSnap.cityMap!!.streets.first { !it.bright }.name
+        assertFalse(session.tapStreet(dimMinskStreet))
+        assertEquals(ScreenId.CITY_MAP, session.snapshot().screen)
+
+        // Тап по яркой улице Зыбицкая открывает контур улицы
+        assertTrue(session.tapStreet("Зыбицкая"))
+        val zybitskayaSnap = session.snapshot()
+        assertEquals(ScreenId.STREET_MAP, zybitskayaSnap.screen)
+        assertEquals("Минск · Зыбицкая", zybitskayaSnap.pathText)
+        assertNotNull(zybitskayaSnap.streetMap)
+        assertEquals("Зыбицкая", zybitskayaSnap.streetMap!!.streetName)
+        assertEquals("с запада на восток", zybitskayaSnap.streetMap!!.walkingOrderDescription)
+        assertEquals(
+            listOf("Under", "Койот", "Zodiac", "Рядом", "Белый Налив", "Горький", "На дне", "Матрешка"),
+            zybitskayaSnap.streetMap!!.bars.map { it.name }
+        )
+        assertEquals(
+            listOf(1 to 8, 1 to 8, 2 to 12, 2 to 12, 3 to 16, 3 to 16, 4 to 20, 4 to 20),
+            zybitskayaSnap.streetMap!!.bars.map { it.rank to it.levelCount }
+        )
+        assertEquals(112, zybitskayaSnap.streetMap!!.bars.sumOf { it.levelCount })
+
+        // Возвращаемся на мир двумя шагами «Назад»
+        session.tapBack()
+        assertEquals(ScreenId.CITY_MAP, session.snapshot().screen)
+        session.tapBack()
+        assertEquals(ScreenId.WORLD_MAP, session.snapshot().screen)
+
+        // 2. Витебск -> Суворова
+        assertTrue(session.tapCity("Витебск"))
+        val vitebskSnap = session.snapshot()
+        assertEquals(ScreenId.CITY_MAP, vitebskSnap.screen)
+        assertEquals("Витебск", vitebskSnap.pathText)
+        assertEquals("Суворова", vitebskSnap.cityMap!!.playableStreet.name)
+        assertTrue(vitebskSnap.cityMap!!.playableStreet.bright)
+        assertTrue(vitebskSnap.cityMap!!.playableStreet.description.contains("1,3 км"))
+        assertFalse(session.tapStreet(vitebskSnap.cityMap!!.streets.first { !it.bright }.name))
+        assertEquals(ScreenId.CITY_MAP, session.snapshot().screen)
+
+        assertTrue(session.tapStreet("Суворова"))
+        val suvorovaSnap = session.snapshot()
+        assertEquals(ScreenId.STREET_MAP, suvorovaSnap.screen)
+        assertEquals("Витебск · Суворова", suvorovaSnap.pathText)
+        assertEquals("с севера на юг", suvorovaSnap.streetMap!!.walkingOrderDescription)
+        assertEquals(
+            listOf("Золотой лев", "Марвин", "«Damask» Kafe-Bar", "Аптека бар"),
+            suvorovaSnap.streetMap!!.bars.map { it.name }
+        )
+        assertEquals(
+            listOf(1 to 8, 2 to 12, 3 to 16, 4 to 20),
+            suvorovaSnap.streetMap!!.bars.map { it.rank to it.levelCount }
+        )
+        assertEquals(56, suvorovaSnap.streetMap!!.bars.sumOf { it.levelCount })
+
+        session.systemBack()
+        assertEquals(ScreenId.CITY_MAP, session.snapshot().screen)
+        session.systemBack()
+        assertEquals(ScreenId.WORLD_MAP, session.snapshot().screen)
+
+        // 3. Москва -> Патрики
+        assertTrue(session.tapCity("Москва"))
+        val moscowSnap = session.snapshot()
+        assertEquals(ScreenId.CITY_MAP, moscowSnap.screen)
+        assertEquals("Москва", moscowSnap.pathText)
+        assertEquals("Патрики", moscowSnap.cityMap!!.playableStreet.name)
+        assertTrue(moscowSnap.cityMap!!.playableStreet.bright)
+        assertTrue(moscowSnap.cityMap!!.playableStreet.description.contains("верхней части основного массива"))
+        assertFalse(session.tapStreet(moscowSnap.cityMap!!.streets.first { !it.bright }.name))
+        assertEquals(ScreenId.CITY_MAP, session.snapshot().screen)
+
+        assertTrue(session.tapStreet("Патрики"))
+        val patrikiSnap = session.snapshot()
+        assertEquals(ScreenId.STREET_MAP, patrikiSnap.screen)
+        assertEquals("Москва · Патрики", patrikiSnap.pathText)
+        assertEquals("по контуру пруда", patrikiSnap.streetMap!!.walkingOrderDescription)
+        assertEquals("130×130 м", patrikiSnap.streetMap!!.pondWaterSize)
+        assertEquals(
+            listOf("Малая Бронная", "Большой Патриарший", "Малый Патриарший", "Ермолаевский"),
+            patrikiSnap.streetMap!!.surroundingStreets
+        )
+        assertEquals(
+            listOf("Киану", "Bro&n", "Зойка"),
+            patrikiSnap.streetMap!!.bars.map { it.name }
+        )
+        assertEquals(
+            listOf(1 to 8, 2 to 12, 4 to 20),
+            patrikiSnap.streetMap!!.bars.map { it.rank to it.levelCount }
+        )
+        assertEquals(40, patrikiSnap.streetMap!!.bars.sumOf { it.levelCount })
+    }
+
+    @Test
+    fun `все пятнадцать баров доступны сразу с числом карточек по рангу и первым открытым уровнем, прогресс одного бара не открывает уровни другого, дробь города на мире считает сумму лучших звёзд своих баров, а Назад и Новая игра ведут по ступеням и возвращают мир 120 из 120`() {
+        val session = LevelSession.createLiveGame()
+
+        val expectedGeography = listOf(
+            Triple(
+                "Минск",
+                "Зыбицкая",
+                listOf(
+                    "Under" to 8,
+                    "Койот" to 8,
+                    "Zodiac" to 12,
+                    "Рядом" to 12,
+                    "Белый Налив" to 16,
+                    "Горький" to 16,
+                    "На дне" to 20,
+                    "Матрешка" to 20
+                )
+            ),
+            Triple(
+                "Витебск",
+                "Суворова",
+                listOf(
+                    "Золотой лев" to 8,
+                    "Марвин" to 12,
+                    "«Damask» Kafe-Bar" to 16,
+                    "Аптека бар" to 20
+                )
+            ),
+            Triple(
+                "Москва",
+                "Патрики",
+                listOf(
+                    "Киану" to 8,
+                    "Bro&n" to 12,
+                    "Зойка" to 20
+                )
+            )
+        )
+
+        // 1. Все 15 баров доступны сразу, в каждом сперва открыт только уровень 1, число карточек совпадает с рангом (8, 12, 16, 20), и в каждом баре открывается первый уровень
+        for ((cityName, streetName, bars) in expectedGeography) {
+            assertTrue(session.tapCity(cityName))
+            assertEquals(ScreenId.CITY_MAP, session.snapshot().screen)
+            assertTrue(session.tapStreet(streetName))
+            assertEquals(ScreenId.STREET_MAP, session.snapshot().screen)
+
+            for ((barName, expectedLevels) in bars) {
+                assertTrue("Бар $barName должен открываться с улицы $streetName", session.tapBar(barName))
+                val film = session.snapshot()
+                assertEquals(ScreenId.LEVEL_FILMSTRIP, film.screen)
+                assertEquals(cityName, film.cityName)
+                assertEquals(streetName, film.streetName)
+                assertEquals(barName, film.barName)
+                assertEquals("$streetName · $barName", film.pathText)
+                assertEquals(expectedLevels, film.levelCards.size)
+                assertTrue(film.levelCards[0].unlocked)
+                assertTrue(film.levelCards.drop(1).none { it.unlocked })
+                assertTrue(film.levelCards.all { it.bestStars == 0 })
+
+                // В каждом из 15 баров уже можно открыть первый уровень
+                assertTrue("В баре $barName должен открываться уровень 1", session.tapLevelCard(1))
+                val counter = session.snapshot()
+                assertEquals(ScreenId.COUNTER, counter.screen)
+                assertEquals("$streetName · $barName · Уровень 1", counter.pathText)
+
+                // «Назад» с прилавка возвращает на плёнку, а «Назад» с плёнки — на улицу
+                session.tapBack()
+                assertEquals(ScreenId.LEVEL_FILMSTRIP, session.snapshot().screen)
+                session.tapBack()
+                assertEquals(ScreenId.STREET_MAP, session.snapshot().screen)
+            }
+
+            // «Назад» с улицы в город, из города на мир
+            session.tapBack()
+            assertEquals(ScreenId.CITY_MAP, session.snapshot().screen)
+            session.tapBack()
+            assertEquals(ScreenId.WORLD_MAP, session.snapshot().screen)
+        }
+
+        // 2. Проходим уровень 1 в баре Under (Минск) на 3 звезды и уровень 1 в баре Киану (Москва) на 2 звезды:
+        // в Under открывается уровень 2, но в Койоте и остальных барах открыт только уровень 1!
+        assertTrue(session.tapCity("Минск"))
+        assertTrue(session.tapStreet("Зыбицкая"))
+        assertTrue(session.tapBar("Under"))
+        assertTrue(session.tapLevelCard(1))
+        val underL1 = session.snapshot()
+        for ((from, to) in session.levels[0].solutionMoves) {
+            session.tapBottle(from)
+            session.tapBottle(to)
+        }
+        assertEquals(ScreenId.VICTORY_BANNER, session.snapshot().screen)
+        assertEquals(3, session.snapshot().victoryBanner!!.stars)
+        session.tapToLevels()
+        assertEquals(listOf(true, true) + List(6) { false }, session.snapshot().levelCards.map { it.unlocked })
+        assertEquals(3, session.snapshot().levelCards[0].bestStars)
+
+        // Выходим на Зыбицкую и проверяем соседний бар Койот: прогресс Under не открыл уровень 2 в Койоте
+        session.tapBack()
+        assertEquals(ScreenId.STREET_MAP, session.snapshot().screen)
+        assertTrue(session.tapBar("Койот"))
+        val koyotFilm = session.snapshot()
+        assertEquals("Койот", koyotFilm.barName)
+        assertEquals(8, koyotFilm.levelCards.size)
+        assertTrue(koyotFilm.levelCards[0].unlocked)
+        assertTrue(koyotFilm.levelCards.drop(1).none { it.unlocked })
+        assertEquals(0, koyotFilm.levelCards.sumOf { it.bestStars })
+
+        // Поднимаемся системной «Назад» с плёнки Койота до самого мира: плёнка -> улица -> город -> мир
+        session.systemBack()
+        assertEquals(ScreenId.STREET_MAP, session.snapshot().screen)
+        session.systemBack()
+        assertEquals(ScreenId.CITY_MAP, session.snapshot().screen)
+        session.systemBack()
+        val worldAfterMinskWin = session.snapshot()
+        assertEquals(ScreenId.WORLD_MAP, worldAfterMinskWin.screen)
+
+        // На мире системная «Назад» и tapBack() не меняют экран и не сбрасывают прогресс
+        val staminaBeforeWorldBack = worldAfterMinskWin.stamina
+        session.systemBack()
+        session.tapBack()
+        val worldAfterBackOnWorld = session.snapshot()
+        assertEquals(ScreenId.WORLD_MAP, worldAfterBackOnWorld.screen)
+        assertEquals(staminaBeforeWorldBack, worldAfterBackOnWorld.stamina)
+
+        // Дробь Минска на мире теперь 3/336, Витебска 0/168, Москвы 0/120
+        val citiesAfterMinsk = worldAfterBackOnWorld.worldMap!!.cities.associateBy { it.name }
+        assertEquals("3/336", citiesAfterMinsk.getValue("Минск").fractionText)
+        assertEquals(3, citiesAfterMinsk.getValue("Минск").earnedStars)
+        assertEquals("0/168", citiesAfterMinsk.getValue("Витебск").fractionText)
+        assertEquals("0/120", citiesAfterMinsk.getValue("Москва").fractionText)
+
+        // Проходим уровень 1 в баре Золотой лев (Витебск) и уровень 1 в баре Зойка (Москва)
+        assertTrue(session.tapCity("Витебск"))
+        assertTrue(session.tapStreet("Суворова"))
+        assertTrue(session.tapBar("Золотой лев"))
+        assertTrue(session.tapLevelCard(1))
+        for ((from, to) in session.levels[0].solutionMoves) {
+            session.tapBottle(from)
+            session.tapBottle(to)
+        }
+        assertEquals(ScreenId.VICTORY_BANNER, session.snapshot().screen)
+        session.tapToLevels()
+        session.tapBack() // улица
+        session.tapBack() // город
+        session.tapBack() // мир
+
+        assertTrue(session.tapCity("Москва"))
+        assertTrue(session.tapStreet("Патрики"))
+        assertTrue(session.tapBar("Зойка"))
+        assertEquals(20, session.snapshot().levelCards.size)
+        assertTrue(session.tapLevelCard(1))
+        for ((from, to) in session.levels[0].solutionMoves) {
+            session.tapBottle(from)
+            session.tapBottle(to)
+        }
+        assertEquals(ScreenId.VICTORY_BANNER, session.snapshot().screen)
+        session.tapToLevels()
+        assertTrue(session.snapshot().levelCards[1].unlocked)
+        session.tapBack() // улица
+        session.tapBack() // город
+        session.tapBack() // мир
+
+        val worldWithAllThreeCities = session.snapshot().worldMap!!.cities.associateBy { it.name }
+        assertEquals("3/336", worldWithAllThreeCities.getValue("Минск").fractionText)
+        assertEquals("3/168", worldWithAllThreeCities.getValue("Витебск").fractionText)
+        assertEquals("3/120", worldWithAllThreeCities.getValue("Москва").fractionText)
+
+        // 3. Гибель и «Новая игра» с экрана гибели: открывает мир, 120/120, в каждом баре открыт только уровень 1, звёзд и прибавок нет
+        val fatalLive = LevelSession.createLiveGame(initialStamina = 1, initialCeiling = 123)
+        assertTrue(fatalLive.tapCity("Минск"))
+        assertTrue(fatalLive.tapStreet("Зыбицкая"))
+        assertTrue(fatalLive.tapBar("Under"))
+        assertTrue(fatalLive.tapLevelCard(1))
+        // Делаем ходы до первой сборки бутылки (цена 1 при запасе 1 -> 0 -> гибель)
+        fatalLive.tapBottle(0)
+        fatalLive.tapBottle(2)
+        fatalLive.tapBottle(0)
+        fatalLive.tapBottle(3)
+        fatalLive.tapBottle(1)
+        fatalLive.tapBottle(3)
+        fatalLive.tapBottle(1)
+        fatalLive.tapBottle(2)
+        fatalLive.tapBottle(0)
+        fatalLive.tapBottle(2) // собирает бутылку 2 -> выносливость 1 -> 0 -> гибель!
+        assertEquals(ScreenId.DEFEAT, fatalLive.snapshot().screen)
+        assertEquals(0, fatalLive.snapshot().stamina)
+
+        // «Новая игра» с экрана гибели открывает мир, 120/120
+        fatalLive.startNewGame()
+        val afterDefeatNewGame = fatalLive.snapshot()
+        assertEquals(ScreenId.WORLD_MAP, afterDefeatNewGame.screen)
+        assertEquals(120, afterDefeatNewGame.stamina)
+        assertEquals(120, afterDefeatNewGame.staminaCeiling)
+        assertEquals("120/120", afterDefeatNewGame.enduranceText)
+        assertEquals("Трезв", afterDefeatNewGame.stateLabel)
+        assertEquals("Мир", afterDefeatNewGame.pathText)
+
+        session.applyBarBonus(3)
+        // Проверим и на основной сессии со звёздами в трёх городах после startNewGame():
+        session.startNewGame()
+        val afterNewGame = session.snapshot()
+        assertEquals(ScreenId.WORLD_MAP, afterNewGame.screen)
+        assertEquals(120, afterNewGame.stamina)
+        assertEquals(120, afterNewGame.staminaCeiling)
+        assertEquals("120/120", afterNewGame.enduranceText)
+        assertEquals("Трезв", afterNewGame.stateLabel)
+        assertEquals("Мир", afterNewGame.pathText)
+        val resetCities = afterNewGame.worldMap!!.cities.filter { it.bright }
+        assertEquals(listOf("0/336", "0/168", "0/120"), resetCities.map { it.fractionText })
+
+        // В барах Under и Зойка снова открыт только первый уровень и звёзд нет
+        assertTrue(session.tapCity("Минск"))
+        assertTrue(session.tapStreet("Зыбицкая"))
+        assertTrue(session.tapBar("Under"))
+        assertEquals(listOf(true) + List(7) { false }, session.snapshot().levelCards.map { it.unlocked })
+        assertEquals(0, session.snapshot().levelCards.sumOf { it.bestStars })
+        session.openWorldMap()
+        assertTrue(session.tapCity("Москва"))
+        assertTrue(session.tapStreet("Патрики"))
+        assertTrue(session.tapBar("Зойка"))
+        assertEquals(listOf(true) + List(19) { false }, session.snapshot().levelCards.map { it.unlocked })
+        assertEquals(0, session.snapshot().levelCards.sumOf { it.bestStars })
+    }
 }
