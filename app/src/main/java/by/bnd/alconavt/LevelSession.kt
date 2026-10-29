@@ -167,7 +167,8 @@ data class DrinkCardSnapshot(
         "история",
         "факты"
     ),
-    val backLabel: String = "Назад"
+    val backLabel: String = "Назад",
+    val backButtonLabel: String = backLabel
 )
 
 data class BottleSnapshot(
@@ -175,6 +176,11 @@ data class BottleSnapshot(
     val freeSpaces: Int,
     val selected: Boolean,
     val completedDrinkName: String? = null
+)
+
+data class ActionButtonSnapshot(
+    val title: String,
+    val enabled: Boolean
 )
 
 data class VictoryBannerSnapshot(
@@ -189,6 +195,8 @@ data class CounterSnapshot(
     val movesLabel: String,
     val stamina: Int,
     val staminaCeiling: Int,
+    val restartButton: ActionButtonSnapshot?,
+    val undoButton: ActionButtonSnapshot,
     val victoryBanner: VictoryBannerSnapshot?,
     val screen: ScreenId = ScreenId.COUNTER,
     val drinkCard: DrinkCardSnapshot? = null
@@ -198,7 +206,9 @@ class LevelSession(
     private val capacity: Int,
     initialBottles: List<List<Drink>>
 ) {
-    private val bottles: List<MutableList<Drink>> = initialBottles.map { it.toMutableList() }
+    private val startBottles: List<List<Drink>> = initialBottles.map { it.toList() }
+    private val bottles: List<MutableList<Drink>> = startBottles.map { it.toMutableList() }
+    private val history: MutableList<List<List<Drink>>> = mutableListOf()
     private var selectedIndex: Int? = null
     private var moves: Int = 0
     private var won: Boolean = isSolved()
@@ -253,6 +263,30 @@ class LevelSession(
         onCounter = true
     }
 
+    fun undoMove() {
+        if (!onCounter || openedDrinkCard != null) return
+        if (won || history.isEmpty()) return
+        val previous = history.removeAt(history.lastIndex)
+        previous.forEachIndexed { index, portions ->
+            bottles[index].clear()
+            bottles[index].addAll(portions)
+        }
+        moves--
+        selectedIndex = null
+    }
+
+    fun restartRun() {
+        if (!onCounter || openedDrinkCard != null) return
+        if (won || history.isEmpty()) return
+        startBottles.forEachIndexed { index, portions ->
+            bottles[index].clear()
+            bottles[index].addAll(portions)
+        }
+        history.clear()
+        moves = 0
+        selectedIndex = null
+    }
+
     private fun completedDrinkAt(index: Int): Drink? {
         val portions = bottles[index]
         return if (portions.size == capacity && portions.isNotEmpty() && portions.all { it == portions[0] }) {
@@ -282,6 +316,7 @@ class LevelSession(
         }
 
         val amountToMove = minOf(topRunLength, freeSpaces)
+        history.add(bottles.map { it.toList() })
         val movedPortions = MutableList(amountToMove) { src.removeAt(src.lastIndex) }.asReversed()
         dst.addAll(movedPortions)
         moves++
@@ -299,6 +334,7 @@ class LevelSession(
 
     fun snapshot(): CounterSnapshot {
         val cardDrink = openedDrinkCard
+        val canUndoOrRestart = !won && history.isNotEmpty()
         return CounterSnapshot(
             capacity = capacity,
             bottles = bottles.mapIndexed { idx, portions ->
@@ -313,6 +349,8 @@ class LevelSession(
             movesLabel = "ходы",
             stamina = 120,
             staminaCeiling = 120,
+            restartButton = if (won) null else ActionButtonSnapshot(title = "Сначала", enabled = canUndoOrRestart),
+            undoButton = ActionButtonSnapshot(title = "Отмена хода", enabled = canUndoOrRestart),
             victoryBanner = if (won) VictoryBannerSnapshot(title = "Победа", moves = moves) else null,
             screen = when {
                 !onCounter -> ScreenId.FILM
