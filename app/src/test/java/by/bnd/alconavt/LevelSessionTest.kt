@@ -3925,23 +3925,23 @@ class LevelSessionTest {
         assertTrue(session.tapBar("Золотой лев"))
         assertTrue(session.tapLevelCard(1))
 
-        // Делаем 5 из 6 победных ходов уровня 1 (в бутылке 2 собран Guinness Draught, уровень ещё не кончен)
-        for ((from, to) in session.levels[0].solutionMoves.take(5)) {
+        // Делаем 3 из 4 победных ходов уровня 1 (в бутылке 0 собран Aperol, уровень ещё не кончен)
+        for ((from, to) in session.levels[0].solutionMoves.take(3)) {
             session.tapBottle(from)
             session.tapBottle(to)
         }
         assertEquals(ScreenId.COUNTER, session.snapshot().screen)
-        assertEquals(5, session.snapshot().moves)
+        assertEquals(3, session.snapshot().moves)
         val expectedBottles = session.snapshot().bottles.map { it.portions }
 
-        // Выбираем бутылку 1 и открываем лист карточки собранного напитка в бутылке 2
+        // Выбираем бутылку 1 и открываем лист карточки собранного напитка в бутылке 0
         session.tapBottle(1)
         assertTrue(session.snapshot().bottles[1].selected)
-        session.tapBottleName(2)
+        session.tapBottleName(0)
         val sheetSnap = session.snapshot()
         assertEquals(ScreenId.DRINK_CARD, sheetSnap.screen)
         assertNotNull(sheetSnap.drinkCard)
-        assertEquals(Drink.GUINNESS_DRAUGHT, sheetSnap.drinkCard!!.drink)
+        assertEquals(Drink.APEROL, sheetSnap.drinkCard!!.drink)
 
         // Действие «закрыть приложение» на открытом листе
         val persisted = session.closeApp(atClockMillis = 20_060_000L)
@@ -3962,12 +3962,12 @@ class LevelSessionTest {
         assertEquals("Золотой лев", coldSnap.barName)
         assertEquals(1, coldSnap.levelNumber)
         assertEquals("Суворова · Золотой лев · Уровень 1", coldSnap.pathText)
-        assertEquals(5, coldSnap.moves)
+        assertEquals(3, coldSnap.moves)
         assertEquals(expectedBottles, coldSnap.bottles.map { it.portions })
         assertTrue(coldSnap.bottles.none { it.selected }) // выбор бутылки не хранится
-        assertTrue(coldSnap.bottles[2].charged)          // отметка списания на месте
+        assertTrue(coldSnap.bottles[0].charged)          // отметка списания на месте
         assertTrue(coldSnap.undoButton!!.enabled)        // история отмены на месте
-        assertEquals(110 - 1 + 1, coldSnap.stamina)      // -1 за Guinness, +1 за 5 минут при закрытой игре
+        assertEquals(110 - 2 + 1, coldSnap.stamina)      // -2 за Aperol, +1 за 5 минут при закрытой игре
         assertEquals(60_000L, coldSnap.recoveryProgressMillis)
     }
 
@@ -4119,5 +4119,347 @@ class LevelSessionTest {
         assertTrue(reloadedAfterNewGame.alive)
         assertNull(reloadedAfterNewGame.bars.getValue("Койот").levels[0].unfinishedRun)
         assertNull(reloadedAfterNewGame.bars.getValue("Under").levels[1].unfinishedRun)
+    }
+
+    @Test
+    fun `в каталоге 15 баров и 208 уровней с параметрами бутылок напитков и вместимости строго по таблице рангов`() {
+        val expectedBarRanks = listOf(
+            Triple("Минск", "Зыбицкая", listOf(
+                "Under" to 1,
+                "Койот" to 1,
+                "Zodiac" to 2,
+                "Рядом" to 2,
+                "Белый Налив" to 3,
+                "Горький" to 3,
+                "На дне" to 4,
+                "Матрешка" to 4
+            )),
+            Triple("Витебск", "Суворова", listOf(
+                "Золотой лев" to 1,
+                "Марвин" to 2,
+                "«Damask» Kafe-Bar" to 3,
+                "Аптека бар" to 4
+            )),
+            Triple("Москва", "Патрики", listOf(
+                "Киану" to 1,
+                "Bro&n" to 2,
+                "Зойка" to 4
+            ))
+        )
+
+        fun expectedRankParams(rank: Int, levelNumber: Int): Triple<Int, Int, Int> {
+            val group = (levelNumber - 1) / 4
+            return when (rank) {
+                1 -> when (group) {
+                    0 -> Triple(4, 2, 3)
+                    1 -> Triple(5, 3, 3)
+                    else -> error("Unexpected group $group for rank 1")
+                }
+                2 -> when (group) {
+                    0 -> Triple(5, 3, 3)
+                    1 -> Triple(6, 4, 3)
+                    2 -> Triple(7, 5, 4)
+                    else -> error("Unexpected group $group for rank 2")
+                }
+                3 -> when (group) {
+                    0 -> Triple(6, 4, 4)
+                    1 -> Triple(7, 5, 4)
+                    2 -> Triple(8, 6, 5)
+                    3 -> Triple(9, 7, 5)
+                    else -> error("Unexpected group $group for rank 3")
+                }
+                4 -> when (group) {
+                    0 -> Triple(7, 5, 5)
+                    1 -> Triple(8, 6, 5)
+                    2 -> Triple(8, 6, 6)
+                    3 -> Triple(9, 7, 6)
+                    4 -> Triple(10, 8, 6)
+                    else -> error("Unexpected group $group for rank 4")
+                }
+                else -> error("Unexpected rank $rank")
+            }
+        }
+
+        assertEquals(15, LevelCatalog.bars.size)
+        assertEquals(208, LevelCatalog.totalLevelsCount)
+
+        var totalLevels = 0
+        val levelsByStreet = mutableMapOf<String, Int>()
+
+        for ((cityName, streetName, barList) in expectedBarRanks) {
+            for ((barName, rank) in barList) {
+                val barLevels = LevelCatalog.levelsForBar(barName)
+                val expectedCount = rank * 4 + 4
+                assertEquals("Число уровней бара $barName", expectedCount, barLevels.size)
+                totalLevels += barLevels.size
+                levelsByStreet[streetName] = (levelsByStreet[streetName] ?: 0) + barLevels.size
+
+                for (level in barLevels) {
+                    val (expectedBottles, expectedDrinks, expectedCapacity) = expectedRankParams(rank, level.levelNumber)
+                    assertEquals(
+                        "Вместимость $barName ур. ${level.levelNumber}",
+                        expectedCapacity,
+                        level.capacity
+                    )
+                    assertEquals(
+                        "Число бутылок $barName ур. ${level.levelNumber}",
+                        expectedBottles,
+                        level.initialBottles.size
+                    )
+                    val distinctDrinks = level.initialBottles.flatten().toSet()
+                    assertEquals(
+                        "Число разных напитков $barName ур. ${level.levelNumber}",
+                        expectedDrinks,
+                        distinctDrinks.size
+                    )
+                }
+            }
+        }
+
+        assertEquals(208, totalLevels)
+        assertEquals(112, levelsByStreet["Зыбицкая"])
+        assertEquals(56, levelsByStreet["Суворова"])
+        assertEquals(40, levelsByStreet["Патрики"])
+    }
+
+    @Test
+    fun `у всех 208 уровней постоянная расстановка с двумя пустыми, смешанными полными и всеми 9 напитками`() {
+        val seenArrangements = mutableSetOf<List<List<Drink>>>()
+        val seenDrinksAcrossCatalog = mutableSetOf<Drink>()
+        val underDrinks = mutableSetOf<Drink>()
+
+        val session = LevelSession.createLiveGame()
+
+        for (bar in LevelCatalog.bars) {
+            assertTrue(session.tapCity(bar.cityName))
+            assertTrue(session.tapStreet(bar.streetName))
+            assertTrue(session.tapBar(bar.barName))
+
+            for ((idx, level) in bar.levels.withIndex()) {
+                val levelNum = idx + 1
+                assertEquals(levelNum, level.levelNumber)
+                assertTrue("Все порции уровня ${bar.barName} #$levelNum видны с начала", level.allPortionsVisible)
+                assertTrue("Норматив должен совпадать с длиной проверенного решения", level.parMoves == level.solutionMoves.size && level.parMoves > 0)
+
+                val emptyBottles = level.initialBottles.filter { it.isEmpty() }
+                val nonEmptyBottles = level.initialBottles.filter { it.isNotEmpty() }
+                assertEquals(
+                    "В начале ровно 2 полностью пустые бутылки (${bar.barName} #$levelNum)",
+                    2,
+                    emptyBottles.size
+                )
+                assertEquals(
+                    "Остальные бутылки заполнены (${bar.barName} #$levelNum)",
+                    level.initialBottles.size - 2,
+                    nonEmptyBottles.size
+                )
+
+                for ((bIdx, bottle) in nonEmptyBottles.withIndex()) {
+                    assertEquals(
+                        "Бутылка $bIdx заполнена до вместимости (${bar.barName} #$levelNum)",
+                        level.capacity,
+                        bottle.size
+                    )
+                    assertTrue(
+                        "В непустой бутылке $bIdx минимум 2 разных напитка (${bar.barName} #$levelNum)",
+                        bottle.distinct().size >= 2
+                    )
+                }
+
+                val countsByDrink = mutableMapOf<Drink, Int>()
+                for (bottle in nonEmptyBottles) {
+                    for (drink in bottle) {
+                        countsByDrink[drink] = (countsByDrink[drink] ?: 0) + 1
+                    }
+                }
+                assertEquals(
+                    "Число разных напитков без повтора вида равно числу непустых бутылок (${bar.barName} #$levelNum)",
+                    nonEmptyBottles.size,
+                    countsByDrink.size
+                )
+                for ((drink, count) in countsByDrink) {
+                    assertTrue(drink in Drink.entries)
+                    assertEquals(
+                        "У напитка ${drink.title} порций ровно на одну полную бутылку (${bar.barName} #$levelNum)",
+                        level.capacity,
+                        count
+                    )
+                    seenDrinksAcrossCatalog.add(drink)
+                    if (bar.barName == "Under") {
+                        underDrinks.add(drink)
+                    }
+                }
+
+                assertTrue(
+                    "У каждой пары (${bar.barName}, $levelNum) своя уникальная стартовая расстановка",
+                    seenArrangements.add(level.initialBottles)
+                )
+            }
+
+            // Повтор и новый заход на первом уровне бара возвращают ту же сохранённую расстановку
+            assertTrue(session.tapLevelCard(1))
+            val firstStartPortions = session.snapshot().bottles.map { it.portions }
+            assertEquals(bar.levels[0].initialBottles, firstStartPortions)
+            assertTrue(session.snapshot().allPortionsVisible)
+            assertTrue(session.snapshot().bottles.all { it.allPortionsVisible && it.hiddenPortionsCount == 0 })
+            assertFalse(session.snapshot().hasHintButton)
+            assertNull(session.snapshot().hintButton)
+
+            val (firstFrom, firstTo) = bar.levels[0].solutionMoves.first()
+            session.tapBottle(firstFrom)
+            session.tapBottle(firstTo)
+            assertEquals(1, session.snapshot().moves)
+
+            session.restartRun()
+            assertEquals(firstStartPortions, session.snapshot().bottles.map { it.portions })
+
+            assertTrue(session.startNewRun(1))
+            assertEquals(firstStartPortions, session.snapshot().bottles.map { it.portions })
+
+            session.tapBack() // на плёнку
+            session.tapBack() // на улицу
+            session.tapBack() // в город
+            session.tapBack() // на мир
+        }
+
+        assertEquals(208, seenArrangements.size)
+        assertEquals(Drink.entries.toSet(), seenDrinksAcrossCatalog)
+        assertTrue(
+            "Крепкий напиток Chartreuse Verte (цена 3) встречается уже в первом баре Under",
+            Drink.CHARTREUSE_VERTE in underDrinks
+        )
+    }
+
+    @Test
+    fun `прогон решений всех 208 уровней кончается победой за норматив и персонаж с 120 из 120 жив`() {
+        val liveProgression = LevelSession.createLiveGame()
+        var solvedCount = 0
+        var sawShortCounter = false
+        var sawLongCounter = false
+
+        for (bar in LevelCatalog.bars) {
+            assertEquals(ScreenId.WORLD_MAP, liveProgression.snapshot().screen)
+            assertTrue(liveProgression.tapCity(bar.cityName))
+            assertEquals(ScreenId.CITY_MAP, liveProgression.snapshot().screen)
+            assertTrue(liveProgression.tapStreet(bar.streetName))
+            assertEquals(ScreenId.STREET_MAP, liveProgression.snapshot().screen)
+            assertTrue(liveProgression.tapBar(bar.barName))
+            assertEquals(ScreenId.LEVEL_FILMSTRIP, liveProgression.snapshot().screen)
+            assertEquals(bar.levels.size, liveProgression.snapshot().levelCards.size)
+
+            for ((idx, level) in bar.levels.withIndex()) {
+                val levelNum = idx + 1
+                val filmSnap = liveProgression.snapshot()
+                assertTrue(
+                    "Уровень $levelNum в баре ${bar.barName} должен быть открыт",
+                    filmSnap.levelCards[idx].unlocked
+                )
+                if (idx + 1 < bar.levels.size) {
+                    assertFalse(
+                        "Следующий уровень ${levelNum + 1} в баре ${bar.barName} закрыт до победы в текущем",
+                        filmSnap.levelCards[idx + 1].unlocked
+                    )
+                }
+
+                // Восполним выносливость временем до потолка перед заходом в сквозной навигации,
+                // а также проверим отдельный чистый старт 120/120 для каждого из 208 уровней:
+                liveProgression.advanceTimeMinutes(600)
+                assertTrue(liveProgression.tapLevelCard(levelNum))
+
+                val startSnap = liveProgression.snapshot()
+                assertEquals(ScreenId.COUNTER, startSnap.screen)
+                assertEquals("${bar.streetName} · ${bar.barName} · Уровень $levelNum", startSnap.pathText)
+                assertEquals(level.capacity, startSnap.capacity)
+                assertEquals(level.initialBottles, startSnap.bottles.map { it.portions })
+                assertEquals(2, startSnap.bottles.count { it.portions.isEmpty() })
+                assertTrue(startSnap.bottles.filter { it.portions.isNotEmpty() }.all {
+                    it.portions.size == level.capacity && it.portions.distinct().size >= 2
+                })
+                assertTrue(startSnap.allPortionsVisible)
+                assertFalse(startSnap.hasHintButton)
+                assertNull(startSnap.hintButton)
+
+                // Проверяем крайние прилавки: 4 бутылки вместимостью 3 и 10 бутылок вместимостью 6
+                if (startSnap.bottles.size == 4 && startSnap.capacity == 3) {
+                    sawShortCounter = true
+                    assertEquals(4, startSnap.columnsPerRow)
+                    assertEquals(1, startSnap.rowCount)
+                    assertEquals(listOf(4), startSnap.rows.map { it.size })
+                    assertEquals(GlassFitMode.WITH_CELL_MARGIN, startSnap.glass.fitMode)
+                    assertTrue(startSnap.glass.hasCellMargin)
+                    assertFalse(startSnap.glass.reachesCellEdge)
+                }
+                if (startSnap.bottles.size == 10 && startSnap.capacity == 6) {
+                    sawLongCounter = true
+                    assertEquals(5, startSnap.columnsPerRow)
+                    assertEquals(2, startSnap.rowCount)
+                    assertEquals(listOf(5, 5), startSnap.rows.map { it.size })
+                    assertEquals(GlassFitMode.EDGE_TO_EDGE, startSnap.glass.fitMode)
+                    assertFalse(startSnap.glass.hasCellMargin)
+                    assertTrue(startSnap.glass.reachesCellEdge)
+                }
+
+                // Независимая проверка с полного запаса 120/120 для этого уровня:
+                val singleRun = LevelSession(
+                    levels = listOf(level),
+                    streetName = bar.streetName,
+                    barName = bar.barName,
+                    initialStamina = 120,
+                    initialCeiling = 120
+                )
+                for ((from, to) in level.solutionMoves) {
+                    singleRun.tapBottle(from)
+                    singleRun.tapBottle(to)
+                }
+                val singleWon = singleRun.snapshot()
+                assertEquals(
+                    "Одиночный прогон ${bar.barName} #$levelNum должен завершиться победой",
+                    ScreenId.VICTORY_BANNER,
+                    singleWon.screen
+                )
+                assertEquals(
+                    "Число ходов в ${bar.barName} #$levelNum должно равняться нормативу",
+                    level.parMoves,
+                    singleWon.moves
+                )
+                assertEquals(level.parMoves, singleWon.victoryBanner!!.moves)
+                assertTrue(
+                    "После прогона ${bar.barName} #$levelNum с 120/120 персонаж должен остаться жив",
+                    singleWon.stamina >= 1 && singleWon.defeatScreen == null
+                )
+
+                // Проходим этот же уровень в сквозной навигации по карте, чтобы открыть следующий уровень бара
+                for ((from, to) in level.solutionMoves) {
+                    liveProgression.tapBottle(from)
+                    liveProgression.tapBottle(to)
+                }
+                val progWon = liveProgression.snapshot()
+                assertEquals(ScreenId.VICTORY_BANNER, progWon.screen)
+                assertEquals(level.parMoves, progWon.moves)
+                assertTrue(progWon.stamina >= 1)
+
+                // Повтор того же уровня после победы возвращает ровно ту же стартовую расстановку
+                liveProgression.tapToLevels()
+                assertEquals(ScreenId.LEVEL_FILMSTRIP, liveProgression.snapshot().screen)
+                assertTrue(liveProgression.tapLevelCard(levelNum))
+                assertEquals(level.initialBottles, liveProgression.snapshot().bottles.map { it.portions })
+                liveProgression.tapBack()
+                assertEquals(ScreenId.LEVEL_FILMSTRIP, liveProgression.snapshot().screen)
+
+                solvedCount++
+            }
+
+            // Возвращаемся с плёнки бара на мир: плёнка -> улица -> город -> мир
+            liveProgression.tapBack()
+            assertEquals(ScreenId.STREET_MAP, liveProgression.snapshot().screen)
+            liveProgression.tapBack()
+            assertEquals(ScreenId.CITY_MAP, liveProgression.snapshot().screen)
+            liveProgression.tapBack()
+            assertEquals(ScreenId.WORLD_MAP, liveProgression.snapshot().screen)
+        }
+
+        assertEquals(208, solvedCount)
+        assertTrue("В каталоге проверен крайний прилавок на 4 бутылки вместимостью 3", sawShortCounter)
+        assertTrue("В каталоге проверен крайний прилавок на 10 бутылок вместимостью 6", sawLongCounter)
     }
 }
