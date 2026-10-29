@@ -3037,4 +3037,330 @@ class LevelSessionTest {
         assertFalse(zeroSession.tapLevelCard(1))
         assertEquals(ScreenId.DEFEAT, zeroSession.snapshot().screen)
     }
+
+    @Test
+    fun `пока хотя бы у одного уровня бара нет звезды бар ничего не начислил, в момент первой победы закрывающей все уровни бара начисляется округлённое по целым среднее со значением 0_5 вверх, а при повторе доплачивается разница и начисленное не уменьшается`() {
+        fun makeLevel(num: Int): LevelLayout = LevelLayout(
+            levelNumber = num,
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.CHARTREUSE_VERTE, Drink.CHARTREUSE_VERTE),
+                listOf(Drink.CHARTREUSE_VERTE, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                emptyList(),
+                emptyList()
+            )
+        )
+
+        fun playLevelForStars(session: LevelSession, levelNum: Int, targetStars: Int) {
+            if (session.snapshot().screen != ScreenId.LEVEL_FILMSTRIP) {
+                session.tapToLevels()
+            }
+            assertTrue(session.tapLevelCard(levelNum))
+            when (targetStars) {
+                3 -> {
+                    // Ход 1: Guinness (1) в бутылку 2 -> списано 1 (бутылка 2 полна)
+                    session.tapBottle(1)
+                    session.tapBottle(2)
+                    // Ход 2: Chartreuse (3) в бутылку 0 -> списано 3 (бутылка 0 полна), лишняя трата 0 -> 3 звезды
+                    session.tapBottle(1)
+                    session.tapBottle(0)
+                }
+                2 -> {
+                    // Ход 1: Guinness (1) в бутылку 2 -> списано 1 с бутылки 2
+                    session.tapBottle(1)
+                    session.tapBottle(2)
+                    // Ход 2: перелить Guinness из 2 в 3 -> списано 1 с бутылки 3, бутылка 2 пуста (лишняя трата 1)
+                    session.tapBottle(2)
+                    session.tapBottle(3)
+                    // Ход 3: Chartreuse (3) в бутылку 0 -> списано 3, победа с лишней тратой 1 -> 2 звезды
+                    session.tapBottle(1)
+                    session.tapBottle(0)
+                }
+                1 -> {
+                    // Ход 1: Guinness в пустую бутылку 3 (без сборки)
+                    session.tapBottle(1)
+                    session.tapBottle(3)
+                    // Ход 2: Chartreuse в бутылку 0 -> списано 3 с бутылки 0
+                    session.tapBottle(1)
+                    session.tapBottle(0)
+                    // Ход 3: перелить Chartreuse из 0 в 1 -> списано 3 с бутылки 1, бутылка 0 пуста (лишняя трата 3)
+                    session.tapBottle(0)
+                    session.tapBottle(1)
+                    // Ход 4: Guinness из 3 в 2 -> списано 1 с бутылки 2, победа с лишней тратой 3 -> 1 звезда
+                    session.tapBottle(3)
+                    session.tapBottle(2)
+                }
+            }
+            assertEquals(ScreenId.VICTORY_BANNER, session.snapshot().screen)
+            assertEquals(targetStars, session.snapshot().victoryBanner!!.stars)
+        }
+
+        // Разбор примера из спеки: 8 уровней со звёздами 3, 3, 3, 3, 2, 2, 1, 1 (среднее 18/8 = 2,25 -> прибавка 2),
+        // затем повтор уровней 7 и 8 до 2 звёзд даёт 3, 3, 3, 3, 3, 3, 2, 2 (среднее 22/8 = 2,75 -> доплата +1 до 3)
+        val eightLevels = (1..8).map { makeLevel(it) }
+        val session = LevelSession(
+            levels = eightLevels,
+            streetName = "Зыбицкая",
+            barName = "Under",
+            initialStamina = 120,
+            initialCeiling = 120,
+            initialRecoveryProgressMillis = 180_000L, // 3 минуты накопленной доли восстановления
+            startOnFilmstrip = true
+        )
+
+        val firstPassStars = listOf(3, 3, 3, 3, 2, 2, 1, 1)
+        // Проходим первые 7 уровней: у 8-го уровня ещё нет звезды (0), поэтому бар ничего не начислил
+        for (i in 0 until 7) {
+            playLevelForStars(session, i + 1, firstPassStars[i])
+            val snapAfterLevel = session.snapshot()
+            assertEquals(0, snapAfterLevel.awardedBarBonus)
+            assertEquals(0, snapAfterLevel.barAwardedBonus)
+            assertEquals(mapOf("Under" to 0), snapAfterLevel.awardedBarBonuses)
+            assertEquals(120, snapAfterLevel.staminaCeiling)
+            assertEquals(180_000L, snapAfterLevel.recoveryProgressMillis)
+        }
+
+        // Снимок до первой полной победы (после 7 уровней, перед 8-м):
+        val beforeEighth = session.snapshot()
+        val staminaBeforeEighth = beforeEighth.stamina
+        assertEquals(120, beforeEighth.staminaCeiling)
+        assertEquals(0, beforeEighth.awardedBarBonus)
+        assertEquals(listOf(3, 3, 3, 3, 2, 2, 1, 0), beforeEighth.levelCards.map { it.bestStars })
+
+        // Проходим 8-й уровень на 1 звезду (тратит 3 + 3 + 1 = 7 единиц выносливости):
+        // В момент победы звезда впервые есть у каждого из 8 уровней (3, 3, 3, 3, 2, 2, 1, 1 -> сумма 18, среднее 2,25 -> прибавка 2).
+        // Списание за бутылки (-7) уже прошло, и сразу начисляется прибавка +2 к запасу и потолку!
+        playLevelForStars(session, 8, 1)
+        val afterFirstFullVictory = session.snapshot()
+        assertEquals(listOf(3, 3, 3, 3, 2, 2, 1, 1), afterFirstFullVictory.levelCards.map { it.bestStars })
+        assertEquals(2, afterFirstFullVictory.awardedBarBonus)
+        assertEquals(2, afterFirstFullVictory.barAwardedBonus)
+        assertEquals(2, afterFirstFullVictory.filmstrip.awardedBarBonus)
+        assertEquals(mapOf("Under" to 2), afterFirstFullVictory.awardedBarBonuses)
+        assertEquals(122, afterFirstFullVictory.staminaCeiling)
+        assertEquals(122, afterFirstFullVictory.maxEndurance)
+        assertEquals(staminaBeforeEighth - 7 + 2, afterFirstFullVictory.stamina)
+        assertEquals(180_000L, afterFirstFullVictory.recoveryProgressMillis) // доля восстановления сохранена!
+
+        // Повтор 5-го уровня с 2 до 3 звёзд: звёзды 3, 3, 3, 3, 3, 2, 1, 1 (сумма 19, среднее 2,375 -> округление 2, доплаты ещё нет)
+        val staminaBefore5 = afterFirstFullVictory.stamina
+        playLevelForStars(session, 5, 3) // тратит 4 выносливости
+        val afterLevel5Replay = session.snapshot()
+        assertEquals(listOf(3, 3, 3, 3, 3, 2, 1, 1), afterLevel5Replay.levelCards.map { it.bestStars })
+        assertEquals(2, afterLevel5Replay.awardedBarBonus)
+        assertEquals(122, afterLevel5Replay.staminaCeiling)
+        assertEquals(staminaBefore5 - 4, afterLevel5Replay.stamina)
+
+        // Повтор 6-го уровня с 2 до 3 звёзд: звёзды 3, 3, 3, 3, 3, 3, 1, 1 (сумма 20, среднее ровно 2,5 -> дробная часть 0,5 поднимает вверх до 3!).
+        // Сразу после этого захода доплачивается разница +1 (с 2 до 3)!
+        val staminaBefore6 = afterLevel5Replay.stamina
+        playLevelForStars(session, 6, 3) // тратит 4 выносливости, доплата +1
+        val afterHalfRoundingUp = session.snapshot()
+        assertEquals(listOf(3, 3, 3, 3, 3, 3, 1, 1), afterHalfRoundingUp.levelCards.map { it.bestStars })
+        assertEquals(3, afterHalfRoundingUp.awardedBarBonus)
+        assertEquals(123, afterHalfRoundingUp.staminaCeiling)
+        assertEquals(staminaBefore6 - 4 + 1, afterHalfRoundingUp.stamina)
+        assertEquals(180_000L, afterHalfRoundingUp.recoveryProgressMillis)
+
+        // Поднимаем уровни 7 и 8 до 2 звёзд -> 3, 3, 3, 3, 3, 3, 2, 2 (среднее 2,75 -> округление 3, уже начислено 3, больше не доплачивает)
+        playLevelForStars(session, 7, 2)
+        playLevelForStars(session, 8, 2)
+        val after275 = session.snapshot()
+        assertEquals(listOf(3, 3, 3, 3, 3, 3, 2, 2), after275.levelCards.map { it.bestStars })
+        assertEquals(3, after275.awardedBarBonus)
+        assertEquals(123, after275.staminaCeiling)
+
+        // Слабый повтор 1-го уровня на 1 звезду не уменьшает ни записанные звёзды, ни уже начисленную прибавку бара
+        val staminaBeforeWeakReplay = after275.stamina
+        playLevelForStars(session, 1, 1) // тратит 7 выносливости
+        val afterWeakReplay = session.snapshot()
+        assertEquals(3, afterWeakReplay.awardedBarBonus)
+        assertEquals(123, afterWeakReplay.staminaCeiling)
+        assertEquals(staminaBeforeWeakReplay - 7, afterWeakReplay.stamina)
+    }
+
+    @Test
+    fun `стоящий на потолке перед последней победой с бесплатными отмеченными бутылками оказывается на новом потолке, доля восстановления сохраняется, потолок равен 120 плюс сумма прибавок баров до 165 без отдельного капа, а ход опустивший запас до 0 прибавку не начисляет и персонажа от нуля не спасает`() {
+        val level1 = LevelLayout(
+            levelNumber = 1,
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.PILSNER_URQUELL),
+                listOf(Drink.PILSNER_URQUELL, Drink.PILSNER_URQUELL),
+                emptyList()
+            )
+        )
+        val level2 = LevelLayout(
+            levelNumber = 2,
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.PILSNER_URQUELL),
+                listOf(Drink.PILSNER_URQUELL, Drink.PILSNER_URQUELL),
+                emptyList()
+            )
+        )
+
+        // 1. Кто стоял на старом потолке в момент победы с прибавкой бара, оказывается на новом потолке, а доля пути к следующей единице сохраняется!
+        val session = LevelSession(
+            levels = listOf(level1, level2),
+            barName = "Under",
+            initialStamina = 120,
+            initialCeiling = 120,
+            initialRecoveryProgressMillis = 240_000L, // 4 минуты накопленной доли восстановления
+            startOnFilmstrip = true
+        )
+
+        // Проходим уровень 1 на 3 звезды (списано 2: 120 -> 118, прибавки ещё нет, т.к. уровень 2 = 0 звёзд)
+        assertTrue(session.tapLevelCard(1))
+        session.tapBottle(1)
+        session.tapBottle(2) // Pilsner (-1)
+        session.tapBottle(1)
+        session.tapBottle(0) // Guinness (-1) -> победа в 1-м уровне!
+        session.tapToLevels()
+        assertEquals(118, session.snapshot().stamina)
+        assertEquals(120, session.snapshot().staminaCeiling)
+        assertEquals(0, session.snapshot().awardedBarBonus)
+
+        // Начинаем уровень 2, собираем обе бутылки и отменяем последний ход: бутылки уже отмечены (оплачены), затем восстанавливаем запас до потолка 120/120 с долей 2 минуты (120_000 мс)
+        assertTrue(session.tapLevelCard(2))
+        session.tapBottle(1)
+        session.tapBottle(2) // бутылка 2 оплачена (-1: 118 -> 117)
+        session.tapBottle(1)
+        session.tapBottle(0) // но чтобы не победить сразу, сначала выльем Pilsner в 3!
+        // Сделаем проще: перезапустим в новом экземпляре с 2 уровнями, где на 2-м уровне бутылки оплачены до победы
+        val ceilingSession = LevelSession(
+            levels = listOf(level1, level2),
+            barName = "Under",
+            initialStamina = 120,
+            initialCeiling = 120,
+            startOnFilmstrip = true
+        )
+        assertTrue(ceilingSession.tapLevelCard(1))
+        ceilingSession.tapBottle(1)
+        ceilingSession.tapBottle(2)
+        ceilingSession.tapBottle(1)
+        ceilingSession.tapBottle(0)
+        ceilingSession.tapToLevels()
+
+        assertTrue(ceilingSession.tapLevelCard(2))
+        ceilingSession.tapBottle(1)
+        ceilingSession.tapBottle(3) // 1 Pilsner в 3 (бесплатно)
+        ceilingSession.tapBottle(1)
+        ceilingSession.tapBottle(0) // бутылка 0 собрана Guinness (-1)
+        ceilingSession.undoMove()   // откат сборки бутылки 0 (она уже оплачена!)
+        ceilingSession.tapBottle(3)
+        ceilingSession.tapBottle(2) // бутылка 2 собрана Pilsner (-1), но бутылка 0 ещё не собрана!
+        // Сейчас обе собираемые бутылки (0 и 2) уже оплачены! Восстанавливаем выносливость до потолка 120/120 + накапливаем долю до потолка:
+        ceilingSession.advanceTimeMinutes(15) // запас = 119 -> накапливаем 3 минуты (180_000 мс) перед последней единицей:
+        // Проверим точно: было 120 - 2 (ур.1) - 2 (ур.2) = 116. За 15 минут стало 119 и доля 0.
+        assertEquals(119, ceilingSession.snapshot().stamina)
+        ceilingSession.advanceTimeMinutes(3) // 119/120 и доля 180_000 мс
+        assertEquals(180_000L, ceilingSession.snapshot().recoveryProgressMillis)
+        // Если игрок стоял на старом потолке 120/120 прямо перед победным ходом (оплаченная бутылка 0 собирается бесплатно):
+        ceilingSession.advanceTimeMinutes(2) // 120/120
+        assertEquals(120, ceilingSession.snapshot().stamina)
+        assertEquals(120, ceilingSession.snapshot().staminaCeiling)
+
+        // Победный ход собирает уже оплаченную бутылку 0 бесплатно, закрывает бар на (3, 3) -> прибавка +3:
+        // Игрок стоял на старом потолке 120/120 и сразу оказывается на новом потолке 123/123!
+        ceilingSession.tapBottle(1)
+        ceilingSession.tapBottle(0)
+        val atNewCeiling = ceilingSession.snapshot()
+        assertEquals(ScreenId.VICTORY_BANNER, atNewCeiling.screen)
+        assertEquals(3, atNewCeiling.awardedBarBonus)
+        assertEquals(123, atNewCeiling.stamina)
+        assertEquals(123, atNewCeiling.staminaCeiling)
+        assertEquals("123/123", atNewCeiling.enduranceText)
+
+        // Восстановление останавливается на новом потолке 123, а когда списываем и копим — идёт вплоть до нового потолка 123
+        ceilingSession.advanceTimeMinutes(20)
+        assertEquals(123, ceilingSession.snapshot().stamina)
+
+        // 2. Потолок равен 120 + сумма уже начисленных прибавок всех 15 баров (до 165 без отдельного потолка сверху)
+        val all15Bars = listOf(
+            "Under", "Койот", "Zodiac", "Рядом", "Белый Налив", "Горький", "На дне", "Матрешка",
+            "Золотой лев", "Марвин", "«Damask» Kafe-Bar", "Аптека бар",
+            "Киану", "Bro&n", "Зойка"
+        )
+        // "Under" уже начислил 3 (123/123). Начисляем по 3 за остальные 14 баров:
+        for (bar in all15Bars.drop(1)) {
+            ceilingSession.applyBarBonus(3, targetBarName = bar)
+        }
+        val max165 = ceilingSession.snapshot()
+        assertEquals(15, max165.awardedBarBonuses.size)
+        assertEquals(45, max165.awardedBarBonuses.values.sum())
+        assertEquals(165, max165.stamina)
+        assertEquals(165, max165.staminaCeiling)
+        assertEquals("165/165", max165.enduranceText)
+
+        // 3. Ход, который собирает последний уровень бара, но опускает запас до 0, открывает гибель ДО победы:
+        // звёзды не пишет, прибавку бара не начисляет (и не поднимает персонажа с 0!).
+        val fatalBarSession = LevelSession(
+            levels = listOf(level1, level2),
+            barName = "Under",
+            initialStamina = 3, // 2 единицы уйдёт на уровень 1 (останется 1), и 1 единица на уровень 2 опустит в 0
+            initialCeiling = 120,
+            startOnFilmstrip = true
+        )
+        assertTrue(fatalBarSession.tapLevelCard(1))
+        fatalBarSession.tapBottle(1)
+        fatalBarSession.tapBottle(2) // -1 (3 -> 2)
+        fatalBarSession.tapBottle(1)
+        fatalBarSession.tapBottle(0) // -1 (2 -> 1) -> победа в уровне 1 при запасе 1!
+        fatalBarSession.tapToLevels()
+        assertEquals(1, fatalBarSession.snapshot().stamina)
+        assertEquals(0, fatalBarSession.snapshot().awardedBarBonus)
+
+        // В уровне 2 делаем так, чтобы последняя сборка стоила 1 и одновременно решала весь уровень:
+        // Сначала выльем Pilsner в 3 (бесплатно), соберём Guinness в 0 (-1 -> запас 0 на неполном уровне) — а чтобы именно ПОБЕДНЫЙ ход опустил в 0:
+        // Возьмём уровень 2 с одной собираемой бутылкой в 1 ход!
+        val oneBottleSolveLevel2 = LevelLayout(
+            levelNumber = 2,
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT),
+                emptyList(),
+                emptyList()
+            )
+        )
+        val fatalOnWinningMoveSession = LevelSession(
+            levels = listOf(level1, oneBottleSolveLevel2),
+            barName = "Under",
+            initialStamina = 3,
+            initialCeiling = 120,
+            startOnFilmstrip = true
+        )
+        assertTrue(fatalOnWinningMoveSession.tapLevelCard(1))
+        fatalOnWinningMoveSession.tapBottle(1)
+        fatalOnWinningMoveSession.tapBottle(2) // 3 -> 2
+        fatalOnWinningMoveSession.tapBottle(1)
+        fatalOnWinningMoveSession.tapBottle(0) // 2 -> 1 (уровень 1 пройден на 3 звезды, уровень 2 открыт)
+        fatalOnWinningMoveSession.tapToLevels()
+
+        assertTrue(fatalOnWinningMoveSession.tapLevelCard(2))
+        // Этот ход собирает единственную бутылку уровня 2 (и закрыл бы весь бар на 3 звезды), НО опускает запас с 1 до 0!
+        fatalOnWinningMoveSession.tapBottle(1)
+        fatalOnWinningMoveSession.tapBottle(0)
+
+        val defeatedOnFinalBarMove = fatalOnWinningMoveSession.snapshot()
+        assertEquals(ScreenId.DEFEAT, defeatedOnFinalBarMove.screen)
+        assertNull(defeatedOnFinalBarMove.victoryBanner)
+        assertEquals(0, defeatedOnFinalBarMove.stamina)
+        assertEquals(120, defeatedOnFinalBarMove.staminaCeiling)
+        assertEquals(0, defeatedOnFinalBarMove.awardedBarBonus)
+        assertEquals(listOf(3, 0), defeatedOnFinalBarMove.levelCards.map { it.bestStars })
+
+        // «Новая игра» сбрасывает и звёзды уровней, и начисленные прибавки баров, и потолок в 120/120
+        ceilingSession.startNewGame()
+        val afterReset = ceilingSession.snapshot()
+        assertEquals(120, afterReset.stamina)
+        assertEquals(120, afterReset.staminaCeiling)
+        assertEquals(0, afterReset.awardedBarBonus)
+        assertEquals(mapOf("Under" to 0), afterReset.awardedBarBonuses)
+        assertEquals(listOf(0, 0), afterReset.levelCards.map { it.bestStars })
+    }
 }
