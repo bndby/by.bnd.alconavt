@@ -171,11 +171,41 @@ data class DrinkCardSnapshot(
     val backButtonLabel: String = backLabel
 )
 
+data class DrinkSheetSnapshot(
+    val drink: Drink,
+    val title: String
+)
+
+enum class GlassFitMode {
+    WITH_CELL_MARGIN,
+    INTERMEDIATE,
+    EDGE_TO_EDGE
+}
+
+data class GlassGeometrySnapshot(
+    val insideCell: Boolean,
+    val sharedNeck: Boolean,
+    val fitMode: GlassFitMode,
+    val widthFraction: Float,
+    val heightFraction: Float,
+    val hasCellMargin: Boolean,
+    val reachesCellEdge: Boolean
+)
+
 data class BottleSnapshot(
     val portions: List<Drink>,
     val freeSpaces: Int,
     val selected: Boolean,
-    val completedDrinkName: String? = null
+    val completedDrinkName: String? = null,
+    val glass: GlassGeometrySnapshot = GlassGeometrySnapshot(
+        insideCell = true,
+        sharedNeck = true,
+        fitMode = GlassFitMode.WITH_CELL_MARGIN,
+        widthFraction = 0.78f,
+        heightFraction = 0.76f,
+        hasCellMargin = true,
+        reachesCellEdge = false
+    )
 )
 
 data class ActionButtonSnapshot(
@@ -190,7 +220,11 @@ data class VictoryBannerSnapshot(
 
 data class CounterSnapshot(
     val capacity: Int,
+    val glass: GlassGeometrySnapshot,
     val bottles: List<BottleSnapshot>,
+    val columnsPerRow: Int,
+    val rowCount: Int,
+    val rows: List<List<BottleSnapshot>>,
     val moves: Int,
     val movesLabel: String,
     val stamina: Int,
@@ -199,7 +233,8 @@ data class CounterSnapshot(
     val undoButton: ActionButtonSnapshot,
     val victoryBanner: VictoryBannerSnapshot?,
     val screen: ScreenId = ScreenId.COUNTER,
-    val drinkCard: DrinkCardSnapshot? = null
+    val drinkCard: DrinkCardSnapshot? = null,
+    val openedDrinkSheet: DrinkSheetSnapshot? = null
 )
 
 class LevelSession(
@@ -216,6 +251,10 @@ class LevelSession(
     private var onCounter: Boolean = true
 
     fun tapBottle(index: Int) {
+        tapBottleGlass(index)
+    }
+
+    fun tapBottleGlass(index: Int) {
         if (!onCounter) return
         if (openedDrinkCard != null) return
         if (won) return
@@ -235,8 +274,12 @@ class LevelSession(
     fun tapBottleName(index: Int) {
         if (!onCounter) return
         if (index !in bottles.indices) return
-        val completed = completedDrinkAt(index) ?: return
+        val completed = completedDrinkOf(bottles[index]) ?: return
         openedDrinkCard = completed
+    }
+
+    fun closeDrinkSheet() {
+        openedDrinkCard = null
     }
 
     fun tapBack() {
@@ -287,15 +330,6 @@ class LevelSession(
         selectedIndex = null
     }
 
-    private fun completedDrinkAt(index: Int): Drink? {
-        val portions = bottles[index]
-        return if (portions.size == capacity && portions.isNotEmpty() && portions.all { it == portions[0] }) {
-            portions[0]
-        } else {
-            null
-        }
-    }
-
     private fun pour(fromIndex: Int, toIndex: Int) {
         val src = bottles[fromIndex]
         val dst = bottles[toIndex]
@@ -328,23 +362,61 @@ class LevelSession(
 
     private fun isSolved(): Boolean {
         return bottles.all { bottle ->
-            bottle.isEmpty() || (bottle.size == capacity && bottle.all { it == bottle[0] })
+            bottle.isEmpty() || completedDrinkOf(bottle) != null
         }
     }
 
+    private fun completedDrinkOf(bottle: List<Drink>): Drink? {
+        if (capacity <= 0 || bottle.size != capacity) return null
+        val first = bottle[0]
+        return if (bottle.all { it == first }) first else null
+    }
+
+    private fun glassGeometry(): GlassGeometrySnapshot {
+        val (fitMode, widthFraction, heightFraction) = when (capacity) {
+            3 -> Triple(GlassFitMode.WITH_CELL_MARGIN, 0.78f, 0.76f)
+            4 -> Triple(GlassFitMode.INTERMEDIATE, 0.85f, 0.84f)
+            5 -> Triple(GlassFitMode.INTERMEDIATE, 0.92f, 0.92f)
+            else -> Triple(GlassFitMode.EDGE_TO_EDGE, 1.0f, 1.0f)
+        }
+        return GlassGeometrySnapshot(
+            insideCell = true,
+            sharedNeck = true,
+            fitMode = fitMode,
+            widthFraction = widthFraction,
+            heightFraction = heightFraction,
+            hasCellMargin = fitMode == GlassFitMode.WITH_CELL_MARGIN,
+            reachesCellEdge = fitMode == GlassFitMode.EDGE_TO_EDGE
+        )
+    }
+
     fun snapshot(): CounterSnapshot {
-        val cardDrink = openedDrinkCard
+        val glass = glassGeometry()
+        val bottleSnapshots = bottles.mapIndexed { idx, portions ->
+            val completedDrink = completedDrinkOf(portions)
+            BottleSnapshot(
+                portions = portions.toList(),
+                freeSpaces = capacity - portions.size,
+                selected = selectedIndex == idx,
+                completedDrinkName = completedDrink?.title,
+                glass = glass
+            )
+        }
+        val columnsPerRow = when {
+            bottleSnapshots.size <= 4 -> 4
+            bottleSnapshots.size <= 6 -> 3
+            else -> 5
+        }
+        val rows = if (bottleSnapshots.isEmpty()) emptyList() else bottleSnapshots.chunked(columnsPerRow)
+        val cardDrink = if (onCounter) openedDrinkCard else null
         val canUndoOrRestart = !won && history.isNotEmpty()
         return CounterSnapshot(
             capacity = capacity,
-            bottles = bottles.mapIndexed { idx, portions ->
-                BottleSnapshot(
-                    portions = portions.toList(),
-                    freeSpaces = capacity - portions.size,
-                    selected = selectedIndex == idx,
-                    completedDrinkName = completedDrinkAt(idx)?.title
-                )
-            },
+            glass = glass,
+            bottles = bottleSnapshots,
+            columnsPerRow = columnsPerRow,
+            rowCount = rows.size,
+            rows = rows,
             moves = moves,
             movesLabel = "ходы",
             stamina = 120,
@@ -358,7 +430,8 @@ class LevelSession(
                 won -> ScreenId.VICTORY_BANNER
                 else -> ScreenId.COUNTER
             },
-            drinkCard = if (onCounter) cardDrink?.toCardSnapshot() else null
+            drinkCard = cardDrink?.toCardSnapshot(),
+            openedDrinkSheet = cardDrink?.let { DrinkSheetSnapshot(drink = it, title = it.title) }
         )
     }
 

@@ -397,7 +397,7 @@ class LevelSessionTest {
     }
 
     @Test
-    fun `Назад и системная Назад закрывают лист и возвращают на тот же прилавок без изменения расстановки, счётчика и выбора бутылки`() {
+    fun `Назад и системная Назад закрывают лист и возвращают на тот же прилавок без изменения расстановки, счётчика, выбора бутылки и истории отмены`() {
         val session = LevelSession(
             capacity = 3,
             initialBottles = listOf(
@@ -407,6 +407,22 @@ class LevelSessionTest {
                 emptyList()
             )
         )
+
+        // На старте пока история пуста: если бутылка уже собрана, открытие и закрытие карточки не добавляют шаг в историю отмены
+        val startCompletedSession = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                List(3) { Drink.GUINNESS_DRAUGHT },
+                listOf(Drink.APEROL),
+                emptyList(),
+                emptyList()
+            )
+        )
+        assertFalse(startCompletedSession.snapshot().undoButton.enabled)
+        startCompletedSession.tapBottleName(0)
+        startCompletedSession.tapBack()
+        assertFalse(startCompletedSession.snapshot().undoButton.enabled)
+        assertEquals(0, startCompletedSession.snapshot().moves)
 
         // Собираем бутылку 0 за два хода и выбираем бутылку 2
         session.tapBottle(1)
@@ -445,6 +461,13 @@ class LevelSessionTest {
         assertEquals(beforeOpen.bottles, afterSystemBack.bottles)
         assertEquals(2, afterSystemBack.moves)
         assertTrue(afterSystemBack.bottles[2].selected)
+
+        // Открытие и закрытие карточки не добавили шаг в историю отмены:
+        // одна отмена сразу откатывает второй ход (сборку бутылки 0)
+        session.undoMove()
+        val afterUndo = session.snapshot()
+        assertEquals(1, afterUndo.moves)
+        assertNull(afterUndo.bottles[0].completedDrinkName)
     }
 
     @Test
@@ -788,5 +811,238 @@ class LevelSessionTest {
         assertEquals(emptyList<Drink>(), afterRestartFromDeadEnd.bottles[3].portions)
         assertFalse(afterRestartFromDeadEnd.undoButton.enabled)
         assertFalse(afterRestartFromDeadEnd.restartButton!!.enabled)
+    }
+
+    @Test
+    fun `расклад рядов прилавка делит 4 бутылки в 1 ряд, 5 и 6 по 3 в 2 ряда, 7-10 по 5 в 2 ряда`() {
+        val bottle = listOf(Drink.GUINNESS_DRAUGHT, Drink.PILSNER_URQUELL, Drink.GUINNESS_DRAUGHT)
+
+        val snap4 = LevelSession(capacity = 3, initialBottles = List(2) { bottle } + List(2) { emptyList() }).snapshot()
+        assertEquals(4, snap4.columnsPerRow)
+        assertEquals(1, snap4.rowCount)
+        assertEquals(listOf(4), snap4.rows.map { it.size })
+
+        val snap5 = LevelSession(capacity = 3, initialBottles = List(3) { bottle } + List(2) { emptyList() }).snapshot()
+        assertEquals(3, snap5.columnsPerRow)
+        assertEquals(2, snap5.rowCount)
+        assertEquals(listOf(3, 2), snap5.rows.map { it.size })
+
+        val snap6 = LevelSession(capacity = 3, initialBottles = List(4) { bottle } + List(2) { emptyList() }).snapshot()
+        assertEquals(3, snap6.columnsPerRow)
+        assertEquals(2, snap6.rowCount)
+        assertEquals(listOf(3, 3), snap6.rows.map { it.size })
+
+        val snap7 = LevelSession(capacity = 4, initialBottles = List(5) { bottle + Drink.APEROL } + List(2) { emptyList() }).snapshot()
+        assertEquals(5, snap7.columnsPerRow)
+        assertEquals(2, snap7.rowCount)
+        assertEquals(listOf(5, 2), snap7.rows.map { it.size })
+
+        val snap8 = LevelSession(capacity = 5, initialBottles = List(6) { bottle + listOf(Drink.APEROL, Drink.CAMPARI) } + List(2) { emptyList() }).snapshot()
+        assertEquals(5, snap8.columnsPerRow)
+        assertEquals(2, snap8.rowCount)
+        assertEquals(listOf(5, 3), snap8.rows.map { it.size })
+
+        val snap9 = LevelSession(capacity = 5, initialBottles = List(7) { bottle + listOf(Drink.APEROL, Drink.CAMPARI) } + List(2) { emptyList() }).snapshot()
+        assertEquals(5, snap9.columnsPerRow)
+        assertEquals(2, snap9.rowCount)
+        assertEquals(listOf(5, 4), snap9.rows.map { it.size })
+
+        val snap10 = LevelSession(capacity = 6, initialBottles = List(8) { List(6) { Drink.GUINNESS_DRAUGHT } } + List(2) { emptyList() }).snapshot()
+        assertEquals(5, snap10.columnsPerRow)
+        assertEquals(2, snap10.rowCount)
+        assertEquals(listOf(5, 5), snap10.rows.map { it.size })
+    }
+
+    @Test
+    fun `стекло вместе с общим горлышком остаётся внутри клетки, оставляет запас при вместимости 3, доходит до края при 6, а при 4 и 5 лежит между ними по ширине и высоте`() {
+        val bottle = listOf(Drink.GUINNESS_DRAUGHT, Drink.PILSNER_URQUELL)
+
+        val snap3 = LevelSession(capacity = 3, initialBottles = List(2) { bottle } + List(2) { emptyList() }).snapshot()
+        val snap4 = LevelSession(capacity = 4, initialBottles = List(4) { bottle } + List(2) { emptyList() }).snapshot()
+        val snap5 = LevelSession(capacity = 5, initialBottles = List(6) { bottle } + List(2) { emptyList() }).snapshot()
+        val snap6 = LevelSession(capacity = 6, initialBottles = List(8) { bottle } + List(2) { emptyList() }).snapshot()
+
+        // Стекло вместе с общим горлышком всегда внутри клетки, форма одна на все бутылки уровня
+        for (snap in listOf(snap3, snap4, snap5, snap6)) {
+            assertTrue(snap.glass.insideCell)
+            assertTrue(snap.glass.sharedNeck)
+            assertTrue(snap.glass.widthFraction in 0.5f..1.0f)
+            assertTrue(snap.glass.heightFraction in 0.5f..1.0f)
+            assertTrue(snap.bottles.all { it.glass == snap.glass })
+        }
+
+        // На уровне из 4 бутылок вместимостью 3 вокруг стекла остаётся запас
+        assertEquals(GlassFitMode.WITH_CELL_MARGIN, snap3.glass.fitMode)
+        assertTrue(snap3.glass.hasCellMargin)
+        assertFalse(snap3.glass.reachesCellEdge)
+        assertTrue(snap3.glass.widthFraction < 1.0f)
+        assertTrue(snap3.glass.heightFraction < 1.0f)
+
+        // На уровне из 10 бутылок вместимостью 6 стекло доходит до края клетки
+        assertEquals(GlassFitMode.EDGE_TO_EDGE, snap6.glass.fitMode)
+        assertFalse(snap6.glass.hasCellMargin)
+        assertTrue(snap6.glass.reachesCellEdge)
+        assertEquals(1.0f, snap6.glass.widthFraction, 0.0001f)
+        assertEquals(1.0f, snap6.glass.heightFraction, 0.0001f)
+
+        // Вместимости 4 и 5 по высоте и ширине строго лежат между 3 и 6
+        assertEquals(GlassFitMode.INTERMEDIATE, snap4.glass.fitMode)
+        assertEquals(GlassFitMode.INTERMEDIATE, snap5.glass.fitMode)
+        assertTrue(snap3.glass.widthFraction < snap4.glass.widthFraction)
+        assertTrue(snap4.glass.widthFraction < snap5.glass.widthFraction)
+        assertTrue(snap5.glass.widthFraction < snap6.glass.widthFraction)
+        assertTrue(snap3.glass.heightFraction < snap4.glass.heightFraction)
+        assertTrue(snap4.glass.heightFraction < snap5.glass.heightFraction)
+        assertTrue(snap5.glass.heightFraction < snap6.glass.heightFraction)
+    }
+
+    @Test
+    fun `на обоих крайних прилавках (4 бутылки по 3 и 10 бутылок по 6) порции различимы, перелив в том числе частичный работает, тап по имени собранной бутылки открывает лист, а тап по стеклу выбирает бутылку`() {
+        // 1. Короткий прилавок: 4 бутылки вместимостью 3
+        val shortCounter = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.APEROL, Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.APEROL, Drink.APEROL),
+                emptyList(),
+                emptyList()
+            )
+        )
+
+        val shortInitial = shortCounter.snapshot()
+        assertEquals(1, shortInitial.rowCount)
+        assertEquals(4, shortInitial.columnsPerRow)
+        assertEquals(listOf(4), shortInitial.rows.map { it.size })
+        assertTrue(shortInitial.glass.insideCell)
+        assertTrue(shortInitial.glass.hasCellMargin)
+        assertEquals(GlassFitMode.WITH_CELL_MARGIN, shortInitial.glass.fitMode)
+        assertEquals(listOf(Drink.APEROL, Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT), shortInitial.bottles[0].portions)
+        assertNull(shortInitial.bottles[0].completedDrinkName)
+        assertNull(shortInitial.openedDrinkSheet)
+        assertNull(shortInitial.drinkCard)
+
+        shortCounter.tapBottle(1)
+        shortCounter.tapBottle(2)
+        shortCounter.tapBottle(0)
+        shortCounter.tapBottle(3)
+        shortCounter.tapBottle(0)
+        shortCounter.tapBottle(2)
+
+        val shortAfterAssemble = shortCounter.snapshot()
+        assertEquals(3, shortAfterAssemble.moves)
+        assertEquals("Aperol", shortAfterAssemble.bottles[2].completedDrinkName)
+        assertNull(shortAfterAssemble.bottles[3].completedDrinkName)
+
+        // Тап по имени собранной бутылки открывает лист напитка
+        shortCounter.tapBottleName(2)
+        val shortWithSheet = shortCounter.snapshot()
+        assertNotNull(shortWithSheet.openedDrinkSheet)
+        assertNotNull(shortWithSheet.drinkCard)
+        assertEquals(Drink.APEROL, shortWithSheet.openedDrinkSheet!!.drink)
+        assertEquals("Aperol", shortWithSheet.openedDrinkSheet!!.title)
+        assertEquals("Aperol", shortWithSheet.drinkCard!!.name)
+        assertFalse(shortWithSheet.bottles[2].selected)
+
+        // Закрываем лист и проверяем, что тап по стеклу собранной бутылки выбирает её для перелива (и не открывает лист)
+        shortCounter.closeDrinkSheet()
+        shortCounter.tapBottleGlass(2)
+        val shortGlassSelected = shortCounter.snapshot()
+        assertNull(shortGlassSelected.openedDrinkSheet)
+        assertNull(shortGlassSelected.drinkCard)
+        assertTrue(shortGlassSelected.bottles[2].selected)
+
+        // 2. Длинный прилавок: 10 бутылок вместимостью 6 (два ряда по пять)
+        val longCounter = LevelSession(
+            capacity = 6,
+            initialBottles = listOf(
+                listOf(
+                    Drink.CAMPARI, Drink.CAMPARI, Drink.CAMPARI,
+                    Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT
+                ),
+                listOf(
+                    Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT,
+                    Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT,
+                    Drink.CAMPARI, Drink.CAMPARI
+                ),
+                listOf(
+                    Drink.PILSNER_URQUELL, Drink.APEROL, Drink.PILSNER_URQUELL,
+                    Drink.APEROL, Drink.PILSNER_URQUELL, Drink.APEROL
+                ),
+                listOf(
+                    Drink.APEROL, Drink.PILSNER_URQUELL, Drink.APEROL,
+                    Drink.PILSNER_URQUELL, Drink.APEROL, Drink.PILSNER_URQUELL
+                ),
+                listOf(
+                    Drink.GIFFARD_CREME_DE_VIOLETTE, Drink.BAILEYS_ORIGINAL_IRISH_CREAM,
+                    Drink.GIFFARD_CREME_DE_VIOLETTE, Drink.BAILEYS_ORIGINAL_IRISH_CREAM,
+                    Drink.GIFFARD_CREME_DE_VIOLETTE, Drink.BAILEYS_ORIGINAL_IRISH_CREAM
+                ),
+                listOf(
+                    Drink.BAILEYS_ORIGINAL_IRISH_CREAM, Drink.GIFFARD_CREME_DE_VIOLETTE,
+                    Drink.BAILEYS_ORIGINAL_IRISH_CREAM, Drink.GIFFARD_CREME_DE_VIOLETTE,
+                    Drink.BAILEYS_ORIGINAL_IRISH_CREAM, Drink.GIFFARD_CREME_DE_VIOLETTE
+                ),
+                listOf(
+                    Drink.GIFFARD_LICHI_LI, Drink.BOLS_BLUE_CURACAO,
+                    Drink.GIFFARD_LICHI_LI, Drink.BOLS_BLUE_CURACAO,
+                    Drink.GIFFARD_LICHI_LI, Drink.BOLS_BLUE_CURACAO
+                ),
+                listOf(
+                    Drink.BOLS_BLUE_CURACAO, Drink.GIFFARD_LICHI_LI,
+                    Drink.BOLS_BLUE_CURACAO, Drink.GIFFARD_LICHI_LI,
+                    Drink.BOLS_BLUE_CURACAO, Drink.GIFFARD_LICHI_LI
+                ),
+                emptyList(),
+                emptyList()
+            )
+        )
+
+        val longInitial = longCounter.snapshot()
+        assertEquals(2, longInitial.rowCount)
+        assertEquals(5, longInitial.columnsPerRow)
+        assertEquals(listOf(5, 5), longInitial.rows.map { it.size })
+        assertTrue(longInitial.glass.insideCell)
+        assertTrue(longInitial.glass.reachesCellEdge)
+        assertFalse(longInitial.glass.hasCellMargin)
+        assertEquals(GlassFitMode.EDGE_TO_EDGE, longInitial.glass.fitMode)
+
+        longCounter.tapBottle(1)
+        longCounter.tapBottle(8)
+
+        longCounter.tapBottle(0)
+        longCounter.tapBottle(1)
+
+        val longAfterPartial = longCounter.snapshot()
+        assertEquals(2, longAfterPartial.moves)
+        assertEquals(
+            listOf(Drink.CAMPARI, Drink.CAMPARI, Drink.CAMPARI, Drink.GUINNESS_DRAUGHT),
+            longAfterPartial.bottles[0].portions
+        )
+        assertEquals(2, longAfterPartial.bottles[0].freeSpaces)
+        assertEquals(List(6) { Drink.GUINNESS_DRAUGHT }, longAfterPartial.bottles[1].portions)
+        assertEquals(0, longAfterPartial.bottles[1].freeSpaces)
+        assertEquals("Guinness Draught", longAfterPartial.bottles[1].completedDrinkName)
+        assertEquals(listOf(Drink.CAMPARI, Drink.CAMPARI), longAfterPartial.rows[1][3].portions)
+
+        longCounter.tapBottleName(1)
+        val longWithSheet = longCounter.snapshot()
+        assertNotNull(longWithSheet.openedDrinkSheet)
+        assertNotNull(longWithSheet.drinkCard)
+        assertEquals(Drink.GUINNESS_DRAUGHT, longWithSheet.openedDrinkSheet!!.drink)
+        assertEquals("Guinness Draught", longWithSheet.openedDrinkSheet!!.title)
+        assertEquals("Guinness Draught", longWithSheet.drinkCard!!.name)
+        assertFalse(longWithSheet.bottles[1].selected)
+
+        longCounter.closeDrinkSheet()
+        longCounter.tapBottleGlass(1)
+        val longGlassSelected = longCounter.snapshot()
+        assertNull(longGlassSelected.openedDrinkSheet)
+        assertNull(longGlassSelected.drinkCard)
+        assertTrue(longGlassSelected.bottles[1].selected)
+
+        longCounter.tapBottleGlass(9)
+        val longAfterDisassemble = longCounter.snapshot()
+        assertNull(longAfterDisassemble.bottles[1].completedDrinkName)
+        assertEquals("Guinness Draught", longAfterDisassemble.bottles[9].completedDrinkName)
     }
 }
