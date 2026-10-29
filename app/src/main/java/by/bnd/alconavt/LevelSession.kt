@@ -3,7 +3,9 @@ package by.bnd.alconavt
 enum class Drink(
     val title: String,
     val strength: String,
+    val colorName: String,
     val colorDescription: String,
+    val pixelColorRgb: Int,
     val drinkingCulture: String,
     val history: String,
     val facts: List<String>
@@ -11,7 +13,9 @@ enum class Drink(
     GUINNESS_DRAUGHT(
         title = "Guinness Draught",
         strength = "4,2%",
+        colorName = "тёмный рубин",
         colorDescription = "тёмный рубин, на просвет почти чёрный",
+        pixelColorRgb = 0x8A2340,
         drinkingCulture = "Чистый сухой бокал и налив в два приёма под 45 градусов; дома из банки — чистый пинтовый бокал. К пинте — пирог со стейком и чеддером.",
         history = "31 декабря 1759 года Артур Гиннесс подписал аренду пивоварни St. James’s Gate на девять тысяч лет; Guinness Draught впервые сварен в 1959 году к двухсотлетию.",
         facts = listOf(
@@ -23,7 +27,9 @@ enum class Drink(
     PILSNER_URQUELL(
         title = "Pilsner Urquell",
         strength = "4,4%",
+        colorName = "светло-золотой",
         colorDescription = "светло-золотой",
+        pixelColorRgb = 0xF0C84A,
         drinkingCulture = "Длинный узкий бокал на ножке; в танковых пабах — кружка с ручкой. К пиву — чешский гуляш из говядины с хлебными или картофельными кнедликами. Три налива: Hladinka к жирному, Šnyt к гуляшу или бургеру, Mlíko к десерту.",
         history = "5 октября 1842 года Йозеф Гролл сварил первую варку из мягкой пльзеньской воды, жатецкого хмеля и моравского ячменя.",
         facts = listOf(
@@ -35,7 +41,9 @@ enum class Drink(
     APEROL(
         title = "Aperol",
         strength = "11%",
+        colorName = "ярко-оранжевый",
         colorDescription = "ярко-оранжевый",
+        pixelColorRgb = 0xFF6A1A,
         drinkingCulture = "Большой винный бокал со льдом и долькой апельсина. К спритцу — чичетти: кростини, польпетте, аранчини, тараллини, трамеццини, торинези, мясная нарезка, брускетта, маринованные оливки и выдержанные сыры.",
         history = "В 1919 году братья Луиджи и Сильвио Барбьери выпустили аперитив после проб с 1912 года; сначала его пили в Падуе и Венеции; рецепт спритца дом относит к 1950-м.",
         facts = listOf(
@@ -47,7 +55,9 @@ enum class Drink(
     GIFFARD_CREME_DE_VIOLETTE(
         title = "Giffard Crème de Violette",
         strength = "16%",
+        colorName = "фиолетовый",
         colorDescription = "фиолетовый",
+        pixelColorRgb = 0x7A3DFF,
         drinkingCulture = "Отдельного бокала нет; аперитив с сухим белым, розовым или игристым и коктейли. Отдельных блюд к ликёру нет; фиалку дом упоминает в кондитерских изделиях.",
         history = "Дом Эмиля Жиффара с жаркого лета 1885 года и мятного Menthe-Pastille, Анже, семейная компания; стиль крем-де-виолетт — XIX век.",
         facts = listOf(
@@ -59,7 +69,9 @@ enum class Drink(
     BAILEYS_ORIGINAL_IRISH_CREAM(
         title = "Baileys Original Irish Cream",
         strength = "17%",
+        colorName = "кремово-бежевый",
         colorDescription = "кремово-бежевый",
+        pixelColorRgb = 0xDFC79C,
         drinkingCulture = "Чистым со льдом, имя бокала не называется. Блюда: полить мороженое, испечь торт, сандей из ванильного мороженого, Baileys и шоколадных крендельков.",
         history = "К 1974 году в рецепте ирландские сливки, ирландский виски, другие спирты, шоколад и ваниль; дом называет напиток первым сливочным ликёром.",
         facts = listOf(
@@ -71,7 +83,9 @@ enum class Drink(
     GIFFARD_LICHI_LI(
         title = "Giffard Lichi-Li",
         strength = "18%",
+        colorName = "светло-розовый",
         colorDescription = "светло-розовый",
+        pixelColorRgb = 0xF7A8C4,
         drinkingCulture = "Чистым на колотом льду, в лонг-дринке или коктейле; отдельного бокала нет.",
         history = "Личи родом из Китая и растёт также в Индии, на Мадагаскаре и в Таиланде. 1885 год — основание дома, не дата Lichi-Li.",
         facts = listOf(
@@ -83,7 +97,9 @@ enum class Drink(
     BOLS_BLUE_CURACAO(
         title = "Bols Blue Curaçao",
         strength = "21%",
+        colorName = "ярко-синий",
         colorDescription = "ярко-синий",
+        pixelColorRgb = 0x2F6BFF,
         drinkingCulture = "Бокал самого ликёра не назван; для Blue Hawaii — хайбол.",
         history = "Дистиллерия ‘t Lootsje в Амстердаме в 1575 году; в 1920-е восьмигранная бутылка и Blue Curacao; в 1926 году первая запись о Crème de Ciel; в 1933 году первая этикетка Bols Blue.",
         facts = listOf(
@@ -95,7 +111,9 @@ enum class Drink(
     CAMPARI(
         title = "Campari",
         strength = "25%",
+        colorName = "прозрачный алый",
         colorDescription = "прозрачный алый",
+        pixelColorRgb = 0xE10600,
         drinkingCulture = "Negroni в рокс-тамблере со льдом и долькой апельсина, равные доли Campari, лондонского сухого джина и сладкого красного вермута.",
         history = "В 1860 году Гаспаре Кампари составил жидкость, которую дом с тех пор не менял; в 1867 году открыл Caffè Campari в Галерее Виктора Эммануила II, в тот же год родился Давиде Кампари; в 1915 году Давиде открыл бар Camparino.",
         facts = listOf(
@@ -107,7 +125,9 @@ enum class Drink(
     CHARTREUSE_VERTE(
         title = "Chartreuse Verte",
         strength = "55%",
+        colorName = "жёлто-зелёный",
         colorDescription = "жёлто-зелёный",
+        pixelColorRgb = 0xC6E04A,
         drinkingCulture = "Дижестив, охлаждённый до 12–13 °C или со льдом; имя бокала не названо. С XIX века ликёр кладут в сладкие и солёные рецепты. Green Chaud — горячий шоколад с ложкой ликёра, взбитыми сливками и какао.",
         history = "В 1840 году из растительного эликсира сделали «ликёр здоровья»; отец Гарнье дал имя Chartreuse Verte и в 1852 году зарегистрировал марку; ликёр делают картезианцы на дистиллерии Эгюнуар в Антр-де-Гье.",
         facts = listOf(
@@ -135,12 +155,18 @@ val PIXEL_BOTTLE_MASK: List<String> = listOf(
 
 data class BottleIllustrationSnapshot(
     val drink: Drink,
+    val colorName: String = drink.colorName,
     val colorDescription: String,
+    val fillColorRgb: Int = drink.pixelColorRgb,
+    val glowColorRgb: Int = drink.pixelColorRgb,
     val pixelMask: List<String> = PIXEL_BOTTLE_MASK,
     val sharedPixelSilhouette: Boolean = true,
     val hasHouseMark: Boolean = false,
     val filledToNeck: Boolean = true,
+    val hasStaticGlow: Boolean = true,
     val staticGlowOfDrinkColor: Boolean = true,
+    val subtleRubyEdge: Boolean = drink == Drink.GUINNESS_DRAUGHT,
+    val hasFoamHeadLayer: Boolean = false,
     val hasManufacturerPhoto: Boolean = false
 )
 
@@ -156,6 +182,7 @@ data class DrinkCardSnapshot(
     val illustration: BottleIllustrationSnapshot,
     val name: String,
     val strength: String,
+    val colorName: String = drink.colorName,
     val drinkingCulture: String,
     val history: String,
     val facts: List<String>,

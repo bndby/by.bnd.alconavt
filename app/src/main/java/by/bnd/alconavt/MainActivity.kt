@@ -574,17 +574,7 @@ class MainActivity : Activity() {
         (value * resources.displayMetrics.density).toInt()
 }
 
-private fun drinkPixelColor(drink: Drink): Int = when (drink) {
-    Drink.GUINNESS_DRAUGHT -> Color.parseColor("#8A2340")
-    Drink.PILSNER_URQUELL -> Color.parseColor("#F0C84A")
-    Drink.APEROL -> Color.parseColor("#FF6A1A")
-    Drink.GIFFARD_CREME_DE_VIOLETTE -> Color.parseColor("#7A3DFF")
-    Drink.BAILEYS_ORIGINAL_IRISH_CREAM -> Color.parseColor("#E6D2B5")
-    Drink.GIFFARD_LICHI_LI -> Color.parseColor("#F3B6C8")
-    Drink.BOLS_BLUE_CURACAO -> Color.parseColor("#2F6BFF")
-    Drink.CAMPARI -> Color.parseColor("#E10600")
-    Drink.CHARTREUSE_VERTE -> Color.parseColor("#C6E04A")
-}
+private fun drinkPixelColor(drink: Drink): Int = (0xFF000000.toInt() or drink.pixelColorRgb)
 
 private class BottleView(
     context: Context,
