@@ -188,6 +188,29 @@ enum class ScreenId {
     DEFEAT
 }
 
+enum class IntoxicationState(
+    val label: String,
+    val backgroundSwayLevel: Int,
+    val neonPulseLevel: Int
+) {
+    SOBER(label = "Трезв", backgroundSwayLevel = 1, neonPulseLevel = 1),
+    TIPSY(label = "Навеселе", backgroundSwayLevel = 2, neonPulseLevel = 2),
+    DRUNK(label = "Пьян", backgroundSwayLevel = 3, neonPulseLevel = 3),
+    WASTED(label = "В хлам", backgroundSwayLevel = 4, neonPulseLevel = 4)
+}
+
+fun intoxicationStateFor(stamina: Int, staminaCeiling: Int): IntoxicationState? {
+    if (stamina <= 0 || staminaCeiling <= 0) return null
+    val lhs = stamina.toLong() * 4L
+    val ceil = staminaCeiling.toLong()
+    return when {
+        lhs >= ceil * 3L -> IntoxicationState.SOBER
+        lhs >= ceil * 2L -> IntoxicationState.TIPSY
+        lhs >= ceil -> IntoxicationState.DRUNK
+        else -> IntoxicationState.WASTED
+    }
+}
+
 data class DefeatScreenSnapshot(
     val title: String = "Персонаж погиб",
     val newGameButtonLabel: String = "Новая игра",
@@ -279,6 +302,16 @@ data class CounterSnapshot(
     val currentEndurance: Int = stamina,
     val maxEndurance: Int = staminaCeiling,
     val enduranceText: String = "$stamina/$staminaCeiling",
+    val intoxicationState: IntoxicationState? = intoxicationStateFor(stamina, staminaCeiling),
+    val stateLabel: String = intoxicationState?.label ?: "",
+    val hasSeparateIntoxicationBar: Boolean = false,
+    val hasCharacterOnScreen: Boolean = false,
+    val bottlesAndPortionsStationary: Boolean = true,
+    val backgroundSwayLevel: Int = intoxicationState?.backgroundSwayLevel ?: 0,
+    val neonPulseLevel: Int = intoxicationState?.neonPulseLevel ?: 0,
+    val recoveryProgressMillis: Long = 0L,
+    val recoveryRemainderMillis: Long = recoveryProgressMillis,
+    val recoveryRemainderMinutes: Int = (recoveryProgressMillis / 60_000L).toInt(),
     val restartButton: ActionButtonSnapshot?,
     val undoButton: ActionButtonSnapshot?,
     val victoryBanner: VictoryBannerSnapshot?,
@@ -297,7 +330,8 @@ class LevelSession(
     initialBottles: List<List<Drink>>,
     initialStamina: Int = 120,
     initialCeiling: Int = 120,
-    val barName: String = "Under"
+    val barName: String = "Under",
+    initialRecoveryProgressMillis: Long = 0L
 ) {
     private val startBottles: List<List<Drink>> = initialBottles.map { it.toList() }
     private val bottles: List<MutableList<Drink>> = startBottles.map { it.toMutableList() }
@@ -307,6 +341,8 @@ class LevelSession(
     private var moves: Int = 0
     private var stamina: Int = initialStamina.coerceAtLeast(0)
     private var staminaCeiling: Int = initialCeiling.coerceAtLeast(1)
+    private var recoveryRemainderMillis: Long = initialRecoveryProgressMillis.coerceIn(0L, 299_999L)
+    private var lastClockTimeMillis: Long? = null
     private var defeated: Boolean = stamina == 0
     private var won: Boolean = !defeated && isSolved()
     private var openedDrinkCard: Drink? = null
@@ -384,17 +420,56 @@ class LevelSession(
         return true
     }
 
-    fun advanceTimeMinutes(minutes: Int) {
-        if (defeated || minutes <= 0) return
-        val gained = minutes / 5
-        if (gained > 0) {
-            stamina = (stamina + gained).coerceAtMost(staminaCeiling)
+    fun advanceTimeMillis(deltaMs: Long) {
+        if (defeated || deltaMs <= 0L) return
+        if (stamina >= staminaCeiling) return
+        val unitDurationMs = 300_000L
+        var remainingTime = deltaMs
+        while (remainingTime > 0L && stamina < staminaCeiling) {
+            val neededForNextUnit = unitDurationMs - recoveryRemainderMillis
+            if (remainingTime >= neededForNextUnit) {
+                remainingTime -= neededForNextUnit
+                recoveryRemainderMillis = 0L
+                stamina++
+            } else {
+                recoveryRemainderMillis += remainingTime
+                remainingTime = 0L
+            }
         }
+    }
+
+    fun onClockTimeMillis(epochMs: Long) {
+        val prev = lastClockTimeMillis
+        lastClockTimeMillis = epochMs
+        if (prev != null && epochMs > prev) {
+            advanceTimeMillis(epochMs - prev)
+        }
+    }
+
+    fun onAppClosed(atClockMillis: Long) {
+        onClockTimeMillis(atClockMillis)
+    }
+
+    fun onAppReopened(atClockMillis: Long) {
+        onClockTimeMillis(atClockMillis)
+    }
+
+    fun advanceTimeMinutes(minutes: Int) {
+        if (minutes <= 0) return
+        advanceTimeMillis(minutes.toLong() * 60_000L)
+    }
+
+    fun applyBarBonus(bonusUnits: Int) {
+        if (defeated || bonusUnits <= 0) return
+        staminaCeiling += bonusUnits
+        stamina = (stamina + bonusUnits).coerceAtMost(staminaCeiling)
     }
 
     fun startNewGame() {
         stamina = 120
         staminaCeiling = 120
+        recoveryRemainderMillis = 0L
+        lastClockTimeMillis = null
         defeated = false
         startBottles.forEachIndexed { index, portions ->
             bottles[index].clear()
@@ -536,6 +611,7 @@ class LevelSession(
             movesLabel = "ходы",
             stamina = stamina,
             staminaCeiling = staminaCeiling,
+            recoveryProgressMillis = recoveryRemainderMillis,
             restartButton = if (defeated || won) null else ActionButtonSnapshot(title = "Сначала", enabled = canUndoOrRestart),
             undoButton = if (defeated) null else ActionButtonSnapshot(title = "Отмена хода", enabled = canUndoOrRestart),
             victoryBanner = if (!defeated && won) VictoryBannerSnapshot(title = "Победа", moves = moves) else null,

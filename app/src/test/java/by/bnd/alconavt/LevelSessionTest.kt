@@ -1776,4 +1776,383 @@ class LevelSessionTest {
             chartreuse.facts
         )
     }
+
+    @Test
+    fun `пока персонаж жив и запас ниже потолка, время часов телефона копится к следующей единице — каждые полные 5 минут дают одну единицу до потолка`() {
+        val session = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT),
+                emptyList(),
+                emptyList()
+            ),
+            initialStamina = 115,
+            initialCeiling = 120
+        )
+
+        val initial = session.snapshot()
+        assertEquals(115, initial.stamina)
+        assertEquals(0L, initial.recoveryProgressMillis)
+        assertEquals(0L, initial.recoveryRemainderMillis)
+        assertEquals(0, initial.recoveryRemainderMinutes)
+
+        // 3 минуты (180_000 мс) — ещё не полные 5 минут, запас 115, доля 180_000 мс (3 минуты)
+        session.advanceTimeMillis(180_000L)
+        val after3Min = session.snapshot()
+        assertEquals(115, after3Min.stamina)
+        assertEquals(180_000L, after3Min.recoveryProgressMillis)
+        assertEquals(180_000L, after3Min.recoveryRemainderMillis)
+        assertEquals(3, after3Min.recoveryRemainderMinutes)
+
+        // Ещё 2 минуты (120_000 мс) — полные 5 минут дают +1 единицу (116), доля 0
+        session.advanceTimeMillis(120_000L)
+        val after5Min = session.snapshot()
+        assertEquals(116, after5Min.stamina)
+        assertEquals(0L, after5Min.recoveryProgressMillis)
+        assertEquals(0, after5Min.recoveryRemainderMinutes)
+
+        // Через метки времени часов телефона (onClockTimeMillis): сдвиг на 12 минут 30 секунд (750_000 мс) даёт +2 единицы (118) и долю 150_000 мс (2 минуты)
+        session.onClockTimeMillis(1_000_000L)
+        session.onClockTimeMillis(1_750_000L)
+        val afterClock = session.snapshot()
+        assertEquals(118, afterClock.stamina)
+        assertEquals(150_000L, afterClock.recoveryProgressMillis)
+        assertEquals(2, afterClock.recoveryRemainderMinutes)
+
+        // Перевод на 30 минут вперёд доводит запас до потолка 120 и не превышает его
+        session.advanceTimeMinutes(30)
+        val atCeiling = session.snapshot()
+        assertEquals(120, atCeiling.stamina)
+        assertEquals(120, atCeiling.staminaCeiling)
+    }
+
+    @Test
+    fun `на потолке новые единицы не копятся и новая доля не растёт, но уже накопленная доля короче 5 минут не стирается списанием, прибавкой бара и стоянием на потолке и продолжает копиться когда запас снова ниже потолка`() {
+        val session = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.APEROL, Drink.APEROL),
+                listOf(Drink.APEROL, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                emptyList()
+            ),
+            initialStamina = 120,
+            initialCeiling = 120
+        )
+
+        // 1. Стояние на потолке 120/120: новые единицы не копятся и доля остаётся 0
+        session.advanceTimeMinutes(18)
+        val atStartCeiling = session.snapshot()
+        assertEquals(120, atStartCeiling.stamina)
+        assertEquals(0L, atStartCeiling.recoveryProgressMillis)
+        assertEquals(0, atStartCeiling.recoveryRemainderMinutes)
+
+        // 2. Списываем 1 единицу сборкой Guinness Draught (120 -> 119) и копим 3 минуты (180_000 мс)
+        session.tapBottle(1)
+        session.tapBottle(2)
+        assertEquals(119, session.snapshot().stamina)
+
+        session.advanceTimeMinutes(3)
+        val with3Min = session.snapshot()
+        assertEquals(119, with3Min.stamina)
+        assertEquals(180_000L, with3Min.recoveryProgressMillis)
+        assertEquals(3, with3Min.recoveryRemainderMinutes)
+
+        // 3. Списываем ещё 2 единицы сборкой Aperol (119 -> 117): накопленные 3 минуты не стираются!
+        session.tapBottle(1)
+        session.tapBottle(0)
+        val afterSecondDeduction = session.snapshot()
+        assertEquals(117, afterSecondDeduction.stamina)
+        assertEquals(180_000L, afterSecondDeduction.recoveryProgressMillis)
+        assertEquals(3, afterSecondDeduction.recoveryRemainderMinutes)
+
+        // 4. Прибавка бара (+3 к запасу и потолку: 117/120 -> 120/123) не стирает накопленные 3 минуты
+        session.applyBarBonus(3)
+        val afterBarBonus = session.snapshot()
+        assertEquals(120, afterBarBonus.stamina)
+        assertEquals(123, afterBarBonus.staminaCeiling)
+        assertEquals(180_000L, afterBarBonus.recoveryProgressMillis)
+        assertEquals(3, afterBarBonus.recoveryRemainderMinutes)
+
+        // 5. Ещё 2 минуты доводят долю до 5 минут -> +1 единица (120 -> 121), доля 0
+        session.advanceTimeMinutes(2)
+        val afterCompletingSavedFraction = session.snapshot()
+        assertEquals(121, afterCompletingSavedFraction.stamina)
+        assertEquals(0L, afterCompletingSavedFraction.recoveryProgressMillis)
+
+        // 6. На 122/123 копим 4 минуты (240_000 мс), затем поднимаем до потолка 123/123 или стоим на потолке с уже лежащей долей:
+        session.advanceTimeMinutes(5) // 121 -> 122
+        session.advanceTimeMinutes(4) // 122/123 и доля 4 мин (240_000 мс)
+        assertEquals(122, session.snapshot().stamina)
+        assertEquals(240_000L, session.snapshot().recoveryProgressMillis)
+
+        // Если запас поднят до потолка (или переведён на потолок с сохранением уже лежащей доли), стояние на потолке не стирает её и не растит выше
+        // Проверим также через конструктор с initialRecoveryProgressMillis или подъём запаса до потолка
+        val sessionAtCeilingWithSavedFraction = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT),
+                emptyList(),
+                emptyList()
+            ),
+            initialStamina = 120,
+            initialCeiling = 120,
+            initialRecoveryProgressMillis = 180_000L
+        )
+        // Стоим на потолке 25 минут: новая доля не растёт, но уже лежащие 3 минуты (180_000 мс) не стираются
+        sessionAtCeilingWithSavedFraction.advanceTimeMinutes(25)
+        assertEquals(120, sessionAtCeilingWithSavedFraction.snapshot().stamina)
+        assertEquals(180_000L, sessionAtCeilingWithSavedFraction.snapshot().recoveryProgressMillis)
+
+        // Когда запас снова падает ниже потолка (120 -> 119), эти 3 минуты продолжают копиться: через 2 минуты запас снова 120!
+        sessionAtCeilingWithSavedFraction.tapBottle(1)
+        sessionAtCeilingWithSavedFraction.tapBottle(0)
+        assertEquals(119, sessionAtCeilingWithSavedFraction.snapshot().stamina)
+        assertEquals(180_000L, sessionAtCeilingWithSavedFraction.snapshot().recoveryProgressMillis)
+
+        sessionAtCeilingWithSavedFraction.advanceTimeMinutes(2)
+        val recoveredFromSaved = sessionAtCeilingWithSavedFraction.snapshot()
+        assertEquals(120, recoveredFromSaved.stamina)
+        assertEquals(0L, recoveredFromSaved.recoveryProgressMillis)
+    }
+
+    @Test
+    fun `восстановление идёт при закрытой игре и посреди уровня, а при нуле восстановление персонажа не поднимает`() {
+        val session = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.APEROL, Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.APEROL),
+                emptyList(),
+                emptyList()
+            ),
+            initialStamina = 100,
+            initialCeiling = 120
+        )
+
+        // 1. Посреди уровня: делаем ход, копим 7 минут (1 единица + 2 минуты доли)
+        session.tapBottle(0)
+        session.tapBottle(2)
+        session.advanceTimeMinutes(7)
+        val midLevel = session.snapshot()
+        assertEquals(ScreenId.COUNTER, midLevel.screen)
+        assertEquals(1, midLevel.moves)
+        assertEquals(101, midLevel.stamina)
+        assertEquals(120_000L, midLevel.recoveryProgressMillis)
+
+        // 2. Вне прилавка (на плёнке) и при закрытой игре: время продолжает копиться от тех же 2 минут
+        session.leaveCounter()
+        assertEquals(ScreenId.FILM, session.snapshot().screen)
+        session.advanceTimeMinutes(3) // 2 + 3 = 5 минут -> 102, доля 0
+        assertEquals(102, session.snapshot().stamina)
+        assertEquals(0L, session.snapshot().recoveryProgressMillis)
+
+        // Закрытая игра на 23 минуты (onAppClosed / onAppReopened или по часам телефона): +4 единицы (106) и 3 минуты доли (180_000 мс)
+        session.onAppClosed(atClockMillis = 10_000_000L)
+        session.onAppReopened(atClockMillis = 10_000_000L + 23 * 60_000L)
+        val afterReopen = session.snapshot()
+        assertEquals(106, afterReopen.stamina)
+        assertEquals(180_000L, afterReopen.recoveryProgressMillis)
+        assertEquals(3, afterReopen.recoveryRemainderMinutes)
+
+        // 3. При нуле (гибель) ни в открытой, ни в закрытой игре восстановление персонажа не поднимает
+        val fatalSession = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT),
+                emptyList(),
+                emptyList()
+            ),
+            initialStamina = 1,
+            initialCeiling = 120
+        )
+        fatalSession.advanceTimeMinutes(3) // накопили 3 минуты доли при живом персонаже
+        assertEquals(180_000L, fatalSession.snapshot().recoveryProgressMillis)
+
+        // Сборка доводит запас до 0 -> гибель
+        fatalSession.tapBottle(1)
+        fatalSession.tapBottle(0)
+        assertEquals(ScreenId.DEFEAT, fatalSession.snapshot().screen)
+        assertEquals(0, fatalSession.snapshot().stamina)
+
+        // Любое время ожидания (в том числе при закрытой игре) не поднимает с нуля
+        fatalSession.advanceTimeMinutes(60)
+        fatalSession.onAppClosed(atClockMillis = 20_000_000L)
+        fatalSession.onAppReopened(atClockMillis = 20_000_000L + 600 * 60_000L)
+        val stillDead = fatalSession.snapshot()
+        assertEquals(ScreenId.DEFEAT, stillDead.screen)
+        assertEquals(0, stillDead.stamina)
+        assertFalse(stillDead.canStartLevel)
+
+        // А «Новая игра» стирает старую долю восстановления и ставит 120/120
+        fatalSession.startNewGame()
+        val freshGame = fatalSession.snapshot()
+        assertEquals(120, freshGame.stamina)
+        assertEquals(120, freshGame.staminaCeiling)
+        assertEquals(0L, freshGame.recoveryProgressMillis)
+    }
+
+    @Test
+    fun `подпись состояния берётся от доли запаса к текущему потолку без округления процентов заранее, при потолке 120 границы 90 60 и 30, 60 из 120 и 75 из 150 оба Навеселе, и обновляется при изменении запаса или потолка`() {
+        fun stateOf(stamina: Int, ceiling: Int): CounterSnapshot = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT),
+                emptyList(),
+                emptyList()
+            ),
+            initialStamina = stamina,
+            initialCeiling = ceiling
+        ).snapshot()
+
+        // При потолке 120 границы положительных состояний — 90, 60 и 30
+        assertEquals("Трезв", stateOf(120, 120).stateLabel)
+        assertEquals(IntoxicationState.SOBER, stateOf(120, 120).intoxicationState)
+        assertEquals("Трезв", stateOf(90, 120).stateLabel)
+        assertEquals(IntoxicationState.SOBER, stateOf(90, 120).intoxicationState)
+
+        assertEquals("Навеселе", stateOf(89, 120).stateLabel)
+        assertEquals(IntoxicationState.TIPSY, stateOf(89, 120).intoxicationState)
+        assertEquals("Навеселе", stateOf(60, 120).stateLabel)
+        assertEquals(IntoxicationState.TIPSY, stateOf(60, 120).intoxicationState)
+
+        assertEquals("Пьян", stateOf(59, 120).stateLabel)
+        assertEquals(IntoxicationState.DRUNK, stateOf(59, 120).intoxicationState)
+        assertEquals("Пьян", stateOf(30, 120).stateLabel)
+        assertEquals(IntoxicationState.DRUNK, stateOf(30, 120).intoxicationState)
+
+        assertEquals("В хлам", stateOf(29, 120).stateLabel)
+        assertEquals(IntoxicationState.WASTED, stateOf(29, 120).intoxicationState)
+        assertEquals("В хлам", stateOf(1, 120).stateLabel)
+        assertEquals(IntoxicationState.WASTED, stateOf(1, 120).intoxicationState)
+
+        // Запасы 60/120 и 75/150 оба читаются как «Навеселе»
+        assertEquals("Навеселе", stateOf(60, 120).stateLabel)
+        assertEquals("Навеселе", stateOf(75, 150).stateLabel)
+        assertEquals(stateOf(60, 120).intoxicationState, stateOf(75, 150).intoxicationState)
+
+        // Без округления процентов заранее:
+        // 93/125 = 74.4% -> строго меньше 75%, поэтому «Навеселе», хотя при округлении до ближайшего было бы 74%,
+        // а 97/130 = 74.615% -> при округлении до целых процентов дало бы 75%, но без округления < 75% -> «Навеселе»!
+        assertEquals("Навеселе", stateOf(97, 130).stateLabel)
+        assertEquals("Трезв", stateOf(98, 130).stateLabel)
+        // 64/129 = 49.61% -> при округлении дало бы 50%, но без округления < 50% -> «Пьян»!
+        assertEquals("Пьян", stateOf(64, 129).stateLabel)
+        assertEquals("Навеселе", stateOf(65, 129).stateLabel)
+        // 32/129 = 24.806% -> при округлении дало бы 25%, но без округления < 25% -> «В хлам»!
+        assertEquals("В хлам", stateOf(32, 129).stateLabel)
+        assertEquals("Пьян", stateOf(33, 129).stateLabel)
+
+        // Подпись обновляется при изменении запаса (списание, восстановление) или потолка (прибавка бара)
+        val liveSession = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.APEROL),
+                emptyList(),
+                emptyList()
+            ),
+            initialStamina = 90,
+            initialCeiling = 120
+        )
+        assertEquals("Трезв", liveSession.snapshot().stateLabel)
+
+        // Списание 1 единицы (90 -> 89 из 120) сразу переводит подпись в «Навеселе»
+        liveSession.tapBottle(1)
+        liveSession.tapBottle(2)
+        liveSession.tapBottle(1)
+        liveSession.tapBottle(0)
+        assertEquals(89, liveSession.snapshot().stamina)
+        assertEquals("Навеселе", liveSession.snapshot().stateLabel)
+
+        // Восстановление 1 единицы за 5 минут (89 -> 90 из 120) возвращает «Трезв»
+        liveSession.advanceTimeMinutes(5)
+        assertEquals(90, liveSession.snapshot().stamina)
+        assertEquals("Трезв", liveSession.snapshot().stateLabel)
+    }
+
+    @Test
+    fun `на полосе прилавка видны запас с потолком и подпись состояния без отдельной шкалы опьянения и без персонажа на экране, фон качается и вывеска пульсирует сильнее от Трезв к В хлам, а бутылки порции числа кнопки и правила переливания от состояния не зависят`() {
+        fun createSessionAt(stamina: Int): LevelSession = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.APEROL, Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.APEROL, Drink.APEROL),
+                emptyList(),
+                emptyList()
+            ),
+            initialStamina = stamina,
+            initialCeiling = 120
+        )
+
+        val soberSnap = createSessionAt(120).snapshot()
+        val tipsySnap = createSessionAt(80).snapshot()
+        val drunkSnap = createSessionAt(45).snapshot()
+        val wastedSnap = createSessionAt(15).snapshot()
+
+        // 1. На полосе прилавка пара «запас/потолок» и подпись состояния; отдельной шкалы опьянения и персонажа нет
+        assertEquals("120/120", soberSnap.enduranceText)
+        assertEquals("Трезв", soberSnap.stateLabel)
+        assertEquals("80/120", tipsySnap.enduranceText)
+        assertEquals("Навеселе", tipsySnap.stateLabel)
+        assertEquals("45/120", drunkSnap.enduranceText)
+        assertEquals("Пьян", drunkSnap.stateLabel)
+        assertEquals("15/120", wastedSnap.enduranceText)
+        assertEquals("В хлам", wastedSnap.stateLabel)
+
+        for (snap in listOf(soberSnap, tipsySnap, drunkSnap, wastedSnap)) {
+            assertFalse(snap.hasSeparateIntoxicationBar)
+            assertFalse(snap.hasCharacterOnScreen)
+            assertTrue(snap.bottlesAndPortionsStationary)
+        }
+
+        // 2. Фон качается и декоративная вывеска пульсирует сильнее от «Трезв» к «В хлам»
+        assertTrue(soberSnap.backgroundSwayLevel < tipsySnap.backgroundSwayLevel)
+        assertTrue(tipsySnap.backgroundSwayLevel < drunkSnap.backgroundSwayLevel)
+        assertTrue(drunkSnap.backgroundSwayLevel < wastedSnap.backgroundSwayLevel)
+
+        assertTrue(soberSnap.neonPulseLevel < tipsySnap.neonPulseLevel)
+        assertTrue(tipsySnap.neonPulseLevel < drunkSnap.neonPulseLevel)
+        assertTrue(drunkSnap.neonPulseLevel < wastedSnap.neonPulseLevel)
+
+        // 3. Бутылки, порции, кнопки, цвета напитков и правила переливания во всех четырёх состояниях абсолютно одинаковы
+        val statesStamina = listOf(120, 80, 45, 15)
+        val expectedLabels = listOf("Трезв", "Навеселе", "Пьян", "В хлам")
+
+        val finalBottlesAcrossStates = statesStamina.zip(expectedLabels).map { (startStamina, expectedLabel) ->
+            val s = createSessionAt(startStamina)
+            assertEquals(expectedLabel, s.snapshot().stateLabel)
+
+            // Делаем одну и ту же серию тапов и переливов
+            s.tapBottle(0) // выбираем бутылку 0
+            assertTrue(s.snapshot().bottles[0].selected)
+            s.tapBottle(2) // перелив 2 x Guinness в пустую бутылку 2
+
+            s.tapBottle(1)
+            s.tapBottle(3) // перелив 2 x Aperol в пустую бутылку 3
+
+            s.tapBottle(1)
+            s.tapBottle(2) // доливаем 3-й Guinness в бутылку 2 (сборка Guinness, -1 выносливость)
+
+            s.tapBottle(0)
+            s.tapBottle(3) // доливаем 3-й Aperol в бутылку 3 (сборка Aperol, -2 выносливости -> Победа!)
+
+            val endSnap = s.snapshot()
+            assertEquals(4, endSnap.moves)
+            assertEquals(startStamina - 3, endSnap.stamina)
+            assertNotNull(endSnap.victoryBanner)
+            assertEquals("Победа", endSnap.victoryBanner!!.title)
+            assertEquals(4, endSnap.victoryBanner!!.moves)
+            endSnap.bottles
+        }
+
+        val referenceBottles = finalBottlesAcrossStates.first()
+        for (bottles in finalBottlesAcrossStates) {
+            assertEquals(referenceBottles, bottles)
+        }
+    }
 }
