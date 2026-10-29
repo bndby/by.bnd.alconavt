@@ -622,6 +622,229 @@ private fun defaultLevelsForRank(rank: Int): List<LevelLayout> {
     }
 }
 
+data class PersistedRunState(
+    val bottles: List<List<Drink>>,
+    val history: List<List<List<Drink>>>,
+    val chargedBottles: Map<Int, Int>,
+    val moves: Int
+)
+
+data class PersistedLevelState(
+    val levelNumber: Int,
+    val unlocked: Boolean,
+    val bestStars: Int,
+    val unfinishedRun: PersistedRunState? = null
+)
+
+data class PersistedBarState(
+    val barName: String,
+    val levels: List<PersistedLevelState>,
+    val awardedBonus: Int = 0
+)
+
+data class PersistedGameState(
+    val alive: Boolean,
+    val defeated: Boolean = !alive,
+    val stamina: Int,
+    val staminaCeiling: Int,
+    val recoveryProgressMillis: Long,
+    val lastClockMillis: Long?,
+    val bars: Map<String, PersistedBarState>,
+    val awardedBarBonuses: Map<String, Int>,
+    val closedOnActiveRunDrinkSheet: Boolean = false,
+    val activeRunBarName: String? = null,
+    val activeRunLevelNumber: Int? = null,
+    val storedOpenedSheets: List<Drink> = emptyList(),
+    val storedViewedCards: List<Drink> = emptyList(),
+    val storedSelectedBottle: Int? = null
+) {
+    fun serialize(): String = buildString {
+        appendLine("v=1")
+        appendLine("alive=$alive")
+        appendLine("stamina=$stamina")
+        appendLine("ceiling=$staminaCeiling")
+        appendLine("recovery=$recoveryProgressMillis")
+        appendLine("clock=${lastClockMillis ?: ""}")
+        appendLine("closedSheet=$closedOnActiveRunDrinkSheet")
+        appendLine("activeBar=${activeRunBarName ?: ""}")
+        appendLine("activeLevel=${activeRunLevelNumber ?: ""}")
+        val bonusesStr = awardedBarBonuses.entries.joinToString(";") { "${it.key}:${it.value}" }
+        appendLine("bonuses=$bonusesStr")
+        for ((bName, barState) in bars) {
+            appendLine("bar=$bName|${barState.awardedBonus}|${barState.levels.size}")
+            for (lvl in barState.levels) {
+                val runStr = lvl.unfinishedRun?.let { encodeRun(it) } ?: ""
+                appendLine("lvl=$bName|${lvl.levelNumber}|${lvl.unlocked}|${lvl.bestStars}|$runStr")
+            }
+        }
+    }
+
+    companion object {
+        private fun encodeBottles(bottles: List<List<Drink>>): String =
+            bottles.joinToString("/") { bottle -> bottle.joinToString(",") { it.name } }
+
+        private fun decodeBottles(raw: String): List<List<Drink>> {
+            if (raw.isEmpty()) return emptyList()
+            return raw.split("/").map { bottleStr ->
+                if (bottleStr.isEmpty()) emptyList()
+                else bottleStr.split(",").filter { it.isNotEmpty() }.map { Drink.valueOf(it) }
+            }
+        }
+
+        private fun encodeRun(run: PersistedRunState): String {
+            val b = encodeBottles(run.bottles)
+            val h = run.history.joinToString("~") { encodeBottles(it) }
+            val c = run.chargedBottles.entries.joinToString(",") { "${it.key}:${it.value}" }
+            return "${run.moves}#$b#$h#$c"
+        }
+
+        private fun decodeRun(raw: String): PersistedRunState? {
+            if (raw.isEmpty()) return null
+            val parts = raw.split("#", limit = 4)
+            if (parts.size < 4) return null
+            val moves = parts[0].toIntOrNull() ?: 0
+            val bottles = decodeBottles(parts[1])
+            val history = if (parts[2].isEmpty()) {
+                emptyList()
+            } else {
+                parts[2].split("~").map { decodeBottles(it) }
+            }
+            val charged = if (parts[3].isEmpty()) {
+                emptyMap()
+            } else {
+                parts[3].split(",").filter { it.isNotEmpty() }.associate { entry ->
+                    val kv = entry.split(":")
+                    kv[0].toInt() to kv[1].toInt()
+                }
+            }
+            return PersistedRunState(
+                bottles = bottles,
+                history = history,
+                chargedBottles = charged,
+                moves = moves
+            )
+        }
+
+        fun deserialize(serialized: String): PersistedGameState? {
+            if (serialized.isBlank()) return null
+            val lines = serialized.lines().filter { it.isNotBlank() }
+            if (lines.isEmpty()) return null
+            var alive = true
+            var stamina = 120
+            var ceiling = 120
+            var recovery = 0L
+            var clock: Long? = null
+            var closedSheet = false
+            var activeBar: String? = null
+            var activeLevel: Int? = null
+            val bonuses = mutableMapOf<String, Int>()
+            val barBonuses = mutableMapOf<String, Int>()
+            val barLevelsMap = mutableMapOf<String, MutableList<PersistedLevelState>>()
+
+            for (line in lines) {
+                val eq = line.indexOf('=')
+                if (eq < 0) continue
+                val key = line.substring(0, eq)
+                val value = line.substring(eq + 1)
+                when (key) {
+                    "alive" -> alive = value.toBoolean()
+                    "stamina" -> stamina = value.toIntOrNull() ?: 120
+                    "ceiling" -> ceiling = value.toIntOrNull() ?: 120
+                    "recovery" -> recovery = value.toLongOrNull() ?: 0L
+                    "clock" -> clock = value.toLongOrNull()
+                    "closedSheet" -> closedSheet = value.toBoolean()
+                    "activeBar" -> activeBar = value.ifEmpty { null }
+                    "activeLevel" -> activeLevel = value.toIntOrNull()
+                    "bonuses" -> {
+                        if (value.isNotEmpty()) {
+                            for (item in value.split(";")) {
+                                val idx = item.lastIndexOf(':')
+                                if (idx > 0) {
+                                    val bName = item.substring(0, idx)
+                                    val bVal = item.substring(idx + 1).toIntOrNull() ?: 0
+                                    bonuses[bName] = bVal
+                                }
+                            }
+                        }
+                    }
+                    "bar" -> {
+                        val parts = value.split("|")
+                        if (parts.size >= 2) {
+                            val bName = parts[0]
+                            val awarded = parts[1].toIntOrNull() ?: 0
+                            barBonuses[bName] = awarded
+                            barLevelsMap.putIfAbsent(bName, mutableListOf())
+                        }
+                    }
+                    "lvl" -> {
+                        val parts = value.split("|", limit = 5)
+                        if (parts.size >= 5) {
+                            val bName = parts[0]
+                            val lvlNum = parts[1].toIntOrNull() ?: 1
+                            val unlocked = parts[2].toBoolean()
+                            val stars = parts[3].toIntOrNull() ?: 0
+                            val run = decodeRun(parts[4])
+                            barLevelsMap.getOrPut(bName) { mutableListOf() }.add(
+                                PersistedLevelState(
+                                    levelNumber = lvlNum,
+                                    unlocked = unlocked,
+                                    bestStars = stars,
+                                    unfinishedRun = run
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
+            val bars = barLevelsMap.mapValues { (bName, lvls) ->
+                PersistedBarState(
+                    barName = bName,
+                    levels = lvls.sortedBy { it.levelNumber },
+                    awardedBonus = barBonuses[bName] ?: (bonuses[bName] ?: 0)
+                )
+            }
+
+            return PersistedGameState(
+                alive = alive,
+                stamina = stamina,
+                staminaCeiling = ceiling,
+                recoveryProgressMillis = recovery,
+                lastClockMillis = clock,
+                bars = bars,
+                awardedBarBonuses = bonuses,
+                closedOnActiveRunDrinkSheet = closedSheet,
+                activeRunBarName = activeBar,
+                activeRunLevelNumber = activeLevel
+            )
+        }
+    }
+}
+
+interface GameStateStore {
+    fun save(state: PersistedGameState)
+    fun load(): PersistedGameState?
+    fun clear()
+}
+
+class InMemoryGameStateStore : GameStateStore {
+    var rawSerialized: String? = null
+        private set
+
+    override fun save(state: PersistedGameState) {
+        rawSerialized = state.serialize()
+    }
+
+    override fun load(): PersistedGameState? {
+        val raw = rawSerialized ?: return null
+        return PersistedGameState.deserialize(raw)
+    }
+
+    override fun clear() {
+        rawSerialized = null
+    }
+}
+
 private data class SavedRunState(
     val bottles: List<List<Drink>>,
     val history: List<List<List<Drink>>>,
@@ -657,30 +880,110 @@ class LevelSession(
     initialRecoveryProgressMillis: Long = 0L,
     private val startOnFilmstrip: Boolean = false,
     private val startOnWorldMap: Boolean = false,
-    private val awardsBarBonusOnCompletion: Boolean = true
+    private val awardsBarBonusOnCompletion: Boolean = true,
+    private val store: GameStateStore? = null
 ) {
     companion object {
         fun createLiveGame(
             initialStamina: Int = 120,
             initialCeiling: Int = 120,
-            initialRecoveryProgressMillis: Long = 0L
+            initialRecoveryProgressMillis: Long = 0L,
+            store: GameStateStore? = null
         ): LevelSession = LevelSession(
             initialStamina = initialStamina,
             initialCeiling = initialCeiling,
             initialRecoveryProgressMillis = initialRecoveryProgressMillis,
             startOnWorldMap = true,
-            awardsBarBonusOnCompletion = true
+            awardsBarBonusOnCompletion = true,
+            store = store
         )
 
         fun createAppSession(
             initialStamina: Int = 120,
             initialCeiling: Int = 120,
-            initialRecoveryProgressMillis: Long = 0L
+            initialRecoveryProgressMillis: Long = 0L,
+            store: GameStateStore? = null
         ): LevelSession = createLiveGame(
             initialStamina = initialStamina,
             initialCeiling = initialCeiling,
-            initialRecoveryProgressMillis = initialRecoveryProgressMillis
+            initialRecoveryProgressMillis = initialRecoveryProgressMillis,
+            store = store
         )
+
+        fun coldStartFrom(
+            store: GameStateStore,
+            atClockMillis: Long? = null,
+            levels: List<LevelLayout> = DEFAULT_UNDER_LEVELS,
+            streetName: String = "Зыбицкая",
+            barName: String = "Under"
+        ): LevelSession {
+            val loaded = store.load()
+            if (loaded == null) {
+                val fresh = LevelSession(
+                    levels = levels,
+                    streetName = streetName,
+                    barName = barName,
+                    startOnWorldMap = true,
+                    awardsBarBonusOnCompletion = true,
+                    store = store
+                )
+                if (atClockMillis != null) {
+                    fresh.onClockTimeMillis(atClockMillis)
+                }
+                return fresh
+            }
+            return coldStartFrom(
+                persisted = loaded,
+                atClockMillis = atClockMillis,
+                levels = levels,
+                streetName = streetName,
+                barName = barName,
+                store = store
+            )
+        }
+
+        fun coldStartFrom(
+            persisted: PersistedGameState,
+            atClockMillis: Long? = null,
+            levels: List<LevelLayout> = DEFAULT_UNDER_LEVELS,
+            streetName: String = "Зыбицкая",
+            barName: String = "Under",
+            store: GameStateStore? = null
+        ): LevelSession {
+            val session = LevelSession(
+                levels = levels,
+                streetName = streetName,
+                barName = barName,
+                initialStamina = if (persisted.alive) persisted.stamina else 0,
+                initialCeiling = persisted.staminaCeiling,
+                initialRecoveryProgressMillis = persisted.recoveryProgressMillis,
+                startOnWorldMap = true,
+                awardsBarBonusOnCompletion = true,
+                store = store
+            )
+            session.restoreFromPersisted(persisted, atClockMillis)
+            return session
+        }
+
+        fun coldStartFromSerialized(
+            serialized: String,
+            atClockMillis: Long? = null,
+            levels: List<LevelLayout> = DEFAULT_UNDER_LEVELS,
+            streetName: String = "Зыбицкая",
+            barName: String = "Under"
+        ): LevelSession {
+            val parsed = PersistedGameState.deserialize(serialized)
+                ?: return createLiveGame().also {
+                    if (atClockMillis != null) it.onClockTimeMillis(atClockMillis)
+                }
+            return coldStartFrom(
+                persisted = parsed,
+                atClockMillis = atClockMillis,
+                levels = levels,
+                streetName = streetName,
+                barName = barName
+            )
+        }
     }
 
     constructor(
@@ -833,8 +1136,8 @@ class LevelSession(
         }
     }
 
-    private fun saveCurrentRunIfUnfinished() {
-        if (defeated || !onCounter) return
+    private fun saveCurrentRunIfUnfinished(allowWhenDefeated: Boolean = false) {
+        if ((!allowWhenDefeated && defeated) || !onCounter) return
         if (won) {
             unfinishedRuns.remove(activeLevelIndex)
             return
@@ -1124,6 +1427,178 @@ class LevelSession(
         onClockTimeMillis(atClockMillis)
     }
 
+    fun minimizeApp(atClockMillis: Long? = null) {
+        if (atClockMillis != null) {
+            onClockTimeMillis(atClockMillis)
+        }
+        saveCurrentRunIfUnfinished()
+        store?.save(exportPersistedState())
+    }
+
+    fun backgroundApp(atClockMillis: Long? = null) {
+        minimizeApp(atClockMillis)
+    }
+
+    fun resumeApp(atClockMillis: Long? = null) {
+        if (atClockMillis != null) {
+            onClockTimeMillis(atClockMillis)
+        }
+    }
+
+    fun closeApp(atClockMillis: Long? = null): PersistedGameState {
+        if (atClockMillis != null) {
+            onClockTimeMillis(atClockMillis)
+        }
+        val state = exportPersistedState()
+        store?.save(state)
+        return state
+    }
+
+    fun coldStart(atClockMillis: Long? = null): LevelSession {
+        val currentStore = store
+        if (currentStore != null) {
+            return coldStartFrom(
+                store = currentStore,
+                atClockMillis = atClockMillis,
+                levels = levels,
+                streetName = streetName,
+                barName = barName
+            )
+        }
+        val exported = exportPersistedState()
+        return coldStartFrom(
+            persisted = exported,
+            atClockMillis = atClockMillis,
+            levels = levels,
+            streetName = streetName,
+            barName = barName
+        )
+    }
+
+    fun exportPersistedState(): PersistedGameState {
+        saveCurrentRunIfUnfinished()
+        val wasOnActiveRunDrinkSheet = !defeated && onCounter && !won && openedDrinkCard != null
+        val persistedBars = barProgressByName.mapValues { (bName, barState) ->
+            val persistedLevels = barState.levels.indices.map { idx ->
+                val savedRun = barState.unfinishedRuns[idx]
+                PersistedLevelState(
+                    levelNumber = idx + 1,
+                    unlocked = barState.unlockedLevels[idx],
+                    bestStars = barState.bestStarsByLevel[idx],
+                    unfinishedRun = savedRun?.let {
+                        PersistedRunState(
+                            bottles = it.bottles.map { b -> b.toList() },
+                            history = it.history.map { snap -> snap.map { b -> b.toList() } },
+                            chargedBottles = it.chargedBottles.toMap(),
+                            moves = it.moves
+                        )
+                    }
+                )
+            }
+            PersistedBarState(
+                barName = bName,
+                levels = persistedLevels,
+                awardedBonus = awardedBarBonuses[bName] ?: barState.bonusAwarded
+            )
+        }
+        return PersistedGameState(
+            alive = !defeated && stamina > 0,
+            defeated = defeated || stamina == 0,
+            stamina = if (defeated) 0 else stamina,
+            staminaCeiling = staminaCeiling,
+            recoveryProgressMillis = recoveryRemainderMillis,
+            lastClockMillis = lastClockTimeMillis,
+            bars = persistedBars,
+            awardedBarBonuses = awardedBarBonuses.toMap(),
+            closedOnActiveRunDrinkSheet = wasOnActiveRunDrinkSheet,
+            activeRunBarName = if (wasOnActiveRunDrinkSheet) currentBarName else null,
+            activeRunLevelNumber = if (wasOnActiveRunDrinkSheet) (activeLevelIndex + 1) else null,
+            storedOpenedSheets = emptyList(),
+            storedViewedCards = emptyList(),
+            storedSelectedBottle = null
+        )
+    }
+
+    internal fun restoreFromPersisted(
+        persisted: PersistedGameState,
+        atClockMillis: Long? = null,
+        openCounterIfClosedOnSheet: Boolean = true
+    ) {
+        defeated = !persisted.alive || persisted.defeated || persisted.stamina <= 0
+        stamina = if (defeated) 0 else persisted.stamina.coerceAtLeast(1)
+        staminaCeiling = persisted.staminaCeiling.coerceAtLeast(1)
+        recoveryRemainderMillis = persisted.recoveryProgressMillis.coerceIn(0L, 299_999L)
+        lastClockTimeMillis = persisted.lastClockMillis
+
+        awardedBarBonuses.clear()
+        awardedBarBonuses.putAll(persisted.awardedBarBonuses)
+        if (barName !in awardedBarBonuses) {
+            awardedBarBonuses[barName] = 0
+        }
+
+        for ((bName, persistedBar) in persisted.bars) {
+            val state = barProgressByName[bName] ?: continue
+            state.bonusAwarded = persistedBar.awardedBonus
+            state.unfinishedRuns.clear()
+            for (lvlState in persistedBar.levels) {
+                val idx = lvlState.levelNumber - 1
+                if (idx in state.levels.indices) {
+                    state.unlockedLevels[idx] = lvlState.unlocked
+                    state.bestStarsByLevel[idx] = lvlState.bestStars
+                    if (lvlState.unfinishedRun != null) {
+                        state.unfinishedRuns[idx] = SavedRunState(
+                            bottles = lvlState.unfinishedRun.bottles.map { it.toList() },
+                            history = lvlState.unfinishedRun.history.map { snap -> snap.map { it.toList() } },
+                            chargedBottles = lvlState.unfinishedRun.chargedBottles.toMap(),
+                            moves = lvlState.unfinishedRun.moves
+                        )
+                    }
+                }
+            }
+        }
+
+        selectedIndex = null
+        openedDrinkCard = null
+        worldNotice = null
+        hasNavigatedMap = true
+
+        if (defeated) {
+            onCounter = false
+            won = false
+            mapScreen = null
+            if (atClockMillis != null) {
+                lastClockTimeMillis = atClockMillis
+            }
+            return
+        }
+
+        if (atClockMillis != null) {
+            onClockTimeMillis(atClockMillis)
+        }
+
+        if (openCounterIfClosedOnSheet &&
+            persisted.closedOnActiveRunDrinkSheet &&
+            persisted.activeRunBarName != null &&
+            persisted.activeRunLevelNumber != null
+        ) {
+            val targetBar = barProgressByName[persisted.activeRunBarName]
+            val targetIdx = persisted.activeRunLevelNumber - 1
+            if (targetBar != null && targetIdx in targetBar.levels.indices) {
+                currentBarName = targetBar.spec.barName
+                currentStreetName = targetBar.spec.streetName
+                currentCityName = targetBar.spec.cityName
+                loadLevelIntoCounter(targetIdx, forceNewRun = false)
+                openedDrinkCard = null
+                selectedIndex = null
+                return
+            }
+        }
+
+        onCounter = false
+        won = false
+        mapScreen = ScreenId.WORLD_MAP
+    }
+
     fun advanceTimeMinutes(minutes: Int) {
         if (minutes <= 0) return
         advanceTimeMillis(minutes.toLong() * 60_000L)
@@ -1179,6 +1654,7 @@ class LevelSession(
             recordVictoryForActiveLevel()
         }
         onCounter = !startOnFilmstrip && mapScreen == null
+        store?.save(exportPersistedState())
     }
 
     fun undoMove() {
@@ -1236,6 +1712,7 @@ class LevelSession(
             stamina = (stamina - completed.enduranceCost).coerceAtLeast(0)
         }
         if (stamina == 0) {
+            saveCurrentRunIfUnfinished(allowWhenDefeated = true)
             defeated = true
             won = false
             openedDrinkCard = null
