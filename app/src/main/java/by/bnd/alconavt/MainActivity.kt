@@ -11,6 +11,8 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
@@ -21,10 +23,13 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
+import kotlin.math.sin
 
 class MainActivity : Activity() {
 
     private lateinit var session: LevelSession
+    private lateinit var backgroundBackdropView: BarBackdropView
+    private lateinit var neonSignView: TextView
     private lateinit var counterScreen: LinearLayout
     private lateinit var cardSheetScrollView: ScrollView
     private lateinit var cardSheetContent: LinearLayout
@@ -32,6 +37,7 @@ class MainActivity : Activity() {
     private lateinit var defeatTitleView: TextView
     private lateinit var newGameButtonView: TextView
     private lateinit var staminaView: TextView
+    private lateinit var stateLabelView: TextView
     private lateinit var bannerLayout: LinearLayout
     private lateinit var bannerTitleView: TextView
     private lateinit var bannerStarsView: TextView
@@ -42,6 +48,18 @@ class MainActivity : Activity() {
     private lateinit var movesValueView: TextView
     private lateinit var movesLabelView: TextView
     private var backCallback: OnBackInvokedCallback? = null
+    private val uiHandler = Handler(Looper.getMainLooper())
+    private var animationPhaseRad: Float = 0f
+    private val ambianceRunnable = object : Runnable {
+        override fun run() {
+            session.onClockTimeMillis(System.currentTimeMillis())
+            val snap = session.snapshot()
+            staminaView.text = snap.enduranceText
+            stateLabelView.text = snap.stateLabel
+            updateAmbianceFrame(snap)
+            uiHandler.postDelayed(this, 60L)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,10 +73,20 @@ class MainActivity : Activity() {
                 emptyList()
             )
         )
+        session.onClockTimeMillis(System.currentTimeMillis())
 
         val rootFrame = FrameLayout(this).apply {
             setBackgroundColor(Color.parseColor("#100E14"))
         }
+
+        backgroundBackdropView = BarBackdropView(this)
+        rootFrame.addView(
+            backgroundBackdropView,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
 
         counterScreen = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -66,16 +94,59 @@ class MainActivity : Activity() {
             setPadding(pad, pad, pad, pad)
         }
 
-        // Верхняя полоса прилавка (запас/потолок)
+        // Верхняя полоса прилавка: декоративная неоновая вывеска бара, запас/потолок и подпись состояния (без отдельной шкалы опьянения)
         val topBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        neonSignView = TextView(this).apply {
+            text = session.barName.uppercase()
+            setTextColor(Color.parseColor("#FF5AD4"))
+            textSize = 18f
+            typeface = Typeface.MONOSPACE
+        }
+        val enduranceGroup = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
         }
         staminaView = TextView(this).apply {
             setTextColor(Color.parseColor("#FFE56A"))
             textSize = 20f
+            typeface = Typeface.MONOSPACE
         }
-        topBar.addView(staminaView)
+        stateLabelView = TextView(this).apply {
+            setTextColor(Color.parseColor("#79F6FF"))
+            textSize = 16f
+            typeface = Typeface.MONOSPACE
+            val padH = dp(8)
+            val padV = dp(2)
+            setPadding(padH, padV, padH, padV)
+        }
+        enduranceGroup.addView(staminaView)
+        enduranceGroup.addView(
+            stateLabelView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                leftMargin = dp(8)
+            }
+        )
+        topBar.addView(
+            neonSignView,
+            LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f
+            )
+        )
+        topBar.addView(
+            enduranceGroup,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
         counterScreen.addView(
             topBar,
             LinearLayout.LayoutParams(
@@ -342,16 +413,46 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        session.onAppReopened(System.currentTimeMillis())
+        render()
+        uiHandler.removeCallbacks(ambianceRunnable)
+        uiHandler.post(ambianceRunnable)
+    }
+
+    override fun onPause() {
+        uiHandler.removeCallbacks(ambianceRunnable)
+        session.onAppClosed(System.currentTimeMillis())
+        super.onPause()
+    }
+
     override fun onDestroy() {
+        uiHandler.removeCallbacks(ambianceRunnable)
         if (Build.VERSION.SDK_INT >= 33) {
             backCallback?.let { onBackInvokedDispatcher.unregisterOnBackInvokedCallback(it) }
         }
         super.onDestroy()
     }
 
+    private fun updateAmbianceFrame(snap: CounterSnapshot) {
+        animationPhaseRad += 0.12f
+        val swayLevel = snap.backgroundSwayLevel
+        val pulseLevel = snap.neonPulseLevel
+        // Только фоновый рисунок и декоративная вывеска пульсируют/качаются; клетки с бутылками и порциями неподвижны
+        val swayAmplitudePx = dp(swayLevel * 2).toFloat()
+        backgroundBackdropView.translationX = sin(animationPhaseRad) * swayAmplitudePx
+        backgroundBackdropView.translationY = sin(animationPhaseRad * 0.7f) * (swayAmplitudePx * 0.5f)
+        val pulseDelta = 0.08f * pulseLevel
+        neonSignView.alpha = (1f - pulseDelta * (0.5f + 0.5f * sin(animationPhaseRad * 1.4f))).coerceIn(0.35f, 1f)
+    }
+
     private fun render() {
+        session.onClockTimeMillis(System.currentTimeMillis())
         val snap = session.snapshot()
-        staminaView.text = "${snap.stamina}/${snap.staminaCeiling}"
+        staminaView.text = snap.enduranceText
+        stateLabelView.text = snap.stateLabel
+        updateAmbianceFrame(snap)
 
         val banner = snap.victoryBanner
         if (banner != null) {
@@ -665,6 +766,25 @@ class MainActivity : Activity() {
 }
 
 private fun drinkPixelColor(drink: Drink): Int = (0xFF000000.toInt() or drink.pixelColorRgb)
+
+private class BarBackdropView(context: Context) : View(context) {
+    private val shelfPaint = Paint().apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+        color = Color.parseColor("#1D1926")
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        if (width <= 0 || height <= 0) return
+        val stepY = (height / 6f).coerceAtLeast(24f)
+        var y = stepY
+        while (y < height) {
+            canvas.drawLine(0f, y, width.toFloat(), y, shelfPaint)
+            y += stepY
+        }
+    }
+}
 
 private class BottleView(
     context: Context,
