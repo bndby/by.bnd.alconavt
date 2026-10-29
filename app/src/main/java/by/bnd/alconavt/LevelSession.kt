@@ -271,7 +271,8 @@ data class LevelLayout(
     val capacity: Int,
     val initialBottles: List<List<Drink>>,
     val parMoves: Int = 0,
-    val solutionMoves: List<Pair<Int, Int>> = emptyList()
+    val solutionMoves: List<Pair<Int, Int>> = emptyList(),
+    val allPortionsVisible: Boolean = true
 )
 
 data class LevelCardSnapshot(
@@ -301,108 +302,7 @@ data class FilmstripSnapshot(
     val restartButton: ActionButtonSnapshot? = null
 )
 
-val DEFAULT_UNDER_LEVELS: List<LevelLayout> = listOf(
-    LevelLayout(
-        levelNumber = 1,
-        capacity = 3,
-        initialBottles = listOf(
-            listOf(Drink.GUINNESS_DRAUGHT, Drink.PILSNER_URQUELL, Drink.GUINNESS_DRAUGHT),
-            listOf(Drink.PILSNER_URQUELL, Drink.GUINNESS_DRAUGHT, Drink.PILSNER_URQUELL),
-            emptyList(),
-            emptyList()
-        ),
-        parMoves = 6,
-        solutionMoves = listOf(0 to 2, 0 to 3, 1 to 3, 1 to 2, 0 to 2, 1 to 3)
-    ),
-    LevelLayout(
-        levelNumber = 2,
-        capacity = 3,
-        initialBottles = listOf(
-            listOf(Drink.APEROL, Drink.APEROL, Drink.CAMPARI),
-            listOf(Drink.CAMPARI, Drink.CAMPARI, Drink.APEROL),
-            emptyList(),
-            emptyList()
-        ),
-        parMoves = 3,
-        solutionMoves = listOf(0 to 2, 1 to 0, 1 to 2)
-    ),
-    LevelLayout(
-        levelNumber = 3,
-        capacity = 3,
-        initialBottles = listOf(
-            listOf(Drink.BOLS_BLUE_CURACAO, Drink.CHARTREUSE_VERTE, Drink.BOLS_BLUE_CURACAO),
-            listOf(Drink.CHARTREUSE_VERTE, Drink.BOLS_BLUE_CURACAO, Drink.CHARTREUSE_VERTE),
-            emptyList(),
-            emptyList()
-        ),
-        parMoves = 6,
-        solutionMoves = listOf(0 to 2, 0 to 3, 1 to 3, 1 to 2, 0 to 2, 1 to 3)
-    ),
-    LevelLayout(
-        levelNumber = 4,
-        capacity = 3,
-        initialBottles = listOf(
-            listOf(Drink.GIFFARD_CREME_DE_VIOLETTE, Drink.GIFFARD_LICHI_LI, Drink.GIFFARD_CREME_DE_VIOLETTE),
-            listOf(Drink.GIFFARD_LICHI_LI, Drink.GIFFARD_CREME_DE_VIOLETTE, Drink.GIFFARD_LICHI_LI),
-            emptyList(),
-            emptyList()
-        ),
-        parMoves = 6,
-        solutionMoves = listOf(0 to 2, 0 to 3, 1 to 3, 1 to 2, 0 to 2, 1 to 3)
-    ),
-    LevelLayout(
-        levelNumber = 5,
-        capacity = 3,
-        initialBottles = listOf(
-            listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT, Drink.PILSNER_URQUELL),
-            listOf(Drink.PILSNER_URQUELL, Drink.PILSNER_URQUELL, Drink.BAILEYS_ORIGINAL_IRISH_CREAM),
-            listOf(Drink.BAILEYS_ORIGINAL_IRISH_CREAM, Drink.BAILEYS_ORIGINAL_IRISH_CREAM, Drink.GUINNESS_DRAUGHT),
-            emptyList(),
-            emptyList()
-        ),
-        parMoves = 4,
-        solutionMoves = listOf(0 to 3, 2 to 0, 1 to 2, 3 to 1)
-    ),
-    LevelLayout(
-        levelNumber = 6,
-        capacity = 3,
-        initialBottles = listOf(
-            listOf(Drink.APEROL, Drink.APEROL, Drink.CAMPARI),
-            listOf(Drink.CAMPARI, Drink.CAMPARI, Drink.CHARTREUSE_VERTE),
-            listOf(Drink.CHARTREUSE_VERTE, Drink.CHARTREUSE_VERTE, Drink.APEROL),
-            emptyList(),
-            emptyList()
-        ),
-        parMoves = 4,
-        solutionMoves = listOf(0 to 3, 2 to 0, 1 to 2, 3 to 1)
-    ),
-    LevelLayout(
-        levelNumber = 7,
-        capacity = 3,
-        initialBottles = listOf(
-            listOf(Drink.BOLS_BLUE_CURACAO, Drink.BOLS_BLUE_CURACAO, Drink.GIFFARD_CREME_DE_VIOLETTE),
-            listOf(Drink.GIFFARD_CREME_DE_VIOLETTE, Drink.GIFFARD_CREME_DE_VIOLETTE, Drink.GIFFARD_LICHI_LI),
-            listOf(Drink.GIFFARD_LICHI_LI, Drink.GIFFARD_LICHI_LI, Drink.BOLS_BLUE_CURACAO),
-            emptyList(),
-            emptyList()
-        ),
-        parMoves = 4,
-        solutionMoves = listOf(0 to 3, 2 to 0, 1 to 2, 3 to 1)
-    ),
-    LevelLayout(
-        levelNumber = 8,
-        capacity = 3,
-        initialBottles = listOf(
-            listOf(Drink.BAILEYS_ORIGINAL_IRISH_CREAM, Drink.BAILEYS_ORIGINAL_IRISH_CREAM, Drink.GUINNESS_DRAUGHT),
-            listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT, Drink.CHARTREUSE_VERTE),
-            listOf(Drink.CHARTREUSE_VERTE, Drink.CHARTREUSE_VERTE, Drink.BAILEYS_ORIGINAL_IRISH_CREAM),
-            emptyList(),
-            emptyList()
-        ),
-        parMoves = 4,
-        solutionMoves = listOf(0 to 3, 2 to 0, 1 to 2, 3 to 1)
-    )
-)
+val DEFAULT_UNDER_LEVELS: List<LevelLayout> = LevelCatalog.levelsForBar("Under")
 
 enum class IntoxicationState(
     val label: String,
@@ -483,6 +383,8 @@ data class BottleSnapshot(
     val completedDrinkName: String? = null,
     val charged: Boolean = false,
     val paid: Boolean = charged,
+    val allPortionsVisible: Boolean = true,
+    val hiddenPortionsCount: Int = 0,
     val glass: GlassGeometrySnapshot = GlassGeometrySnapshot(
         insideCell = true,
         sharedNeck = true,
@@ -527,6 +429,9 @@ data class CounterSnapshot(
     val hasSeparateIntoxicationBar: Boolean = false,
     val hasCharacterOnScreen: Boolean = false,
     val bottlesAndPortionsStationary: Boolean = true,
+    val allPortionsVisible: Boolean = true,
+    val hasHintButton: Boolean = false,
+    val hintButton: ActionButtonSnapshot? = null,
     val backgroundSwayLevel: Int = intoxicationState?.backgroundSwayLevel ?: 0,
     val neonPulseLevel: Int = intoxicationState?.neonPulseLevel ?: 0,
     val recoveryProgressMillis: Long = 0L,
@@ -593,33 +498,13 @@ private data class CatalogBarSpec(
     val levelCount: Int get() = rank * 4 + 4
 }
 
-private val CATALOG_BAR_SPECS: List<CatalogBarSpec> = listOf(
-    CatalogBarSpec("Минск", "Зыбицкая", "Under", 1),
-    CatalogBarSpec("Минск", "Зыбицкая", "Койот", 1),
-    CatalogBarSpec("Минск", "Зыбицкая", "Zodiac", 2),
-    CatalogBarSpec("Минск", "Зыбицкая", "Рядом", 2),
-    CatalogBarSpec("Минск", "Зыбицкая", "Белый Налив", 3),
-    CatalogBarSpec("Минск", "Зыбицкая", "Горький", 3),
-    CatalogBarSpec("Минск", "Зыбицкая", "На дне", 4),
-    CatalogBarSpec("Минск", "Зыбицкая", "Матрешка", 4),
-    CatalogBarSpec("Витебск", "Суворова", "Золотой лев", 1),
-    CatalogBarSpec("Витебск", "Суворова", "Марвин", 2),
-    CatalogBarSpec("Витебск", "Суворова", "«Damask» Kafe-Bar", 3),
-    CatalogBarSpec("Витебск", "Суворова", "Аптека бар", 4),
-    CatalogBarSpec("Москва", "Патрики", "Киану", 1),
-    CatalogBarSpec("Москва", "Патрики", "Bro&n", 2),
-    CatalogBarSpec("Москва", "Патрики", "Зойка", 4)
-)
-
-private fun defaultLevelsForRank(rank: Int): List<LevelLayout> {
-    val total = rank * 4 + 4
-    return (1..total).map { levelNumber ->
-        val template = DEFAULT_UNDER_LEVELS[(levelNumber - 1) % DEFAULT_UNDER_LEVELS.size]
-        template.copy(
-            levelNumber = levelNumber,
-            initialBottles = template.initialBottles.map { it.toList() }
-        )
-    }
+private val CATALOG_BAR_SPECS: List<CatalogBarSpec> = LevelCatalog.bars.map { bar ->
+    CatalogBarSpec(
+        cityName = bar.cityName,
+        streetName = bar.streetName,
+        barName = bar.barName,
+        rank = bar.rank
+    )
 }
 
 private data class SavedRunState(
@@ -649,7 +534,7 @@ private class BarProgressState(
 }
 
 class LevelSession(
-    val levels: List<LevelLayout> = DEFAULT_UNDER_LEVELS,
+    levels: List<LevelLayout> = DEFAULT_UNDER_LEVELS,
     val streetName: String = "Зыбицкая",
     val barName: String = "Under",
     initialStamina: Int = 120,
@@ -659,6 +544,7 @@ class LevelSession(
     private val startOnWorldMap: Boolean = false,
     private val awardsBarBonusOnCompletion: Boolean = true
 ) {
+    private val initialLevelsArg: List<LevelLayout> = levels
     companion object {
         fun createLiveGame(
             initialStamina: Int = 120,
@@ -711,8 +597,8 @@ class LevelSession(
         awardsBarBonusOnCompletion = false
     )
 
-    private val customInitialLevels: List<LevelLayout> = if (levels.isNotEmpty()) {
-        levels.mapIndexed { idx, layout ->
+    private val customInitialLevels: List<LevelLayout> = if (initialLevelsArg.isNotEmpty()) {
+        initialLevelsArg.mapIndexed { idx, layout ->
             layout.copy(
                 levelNumber = idx + 1,
                 initialBottles = layout.initialBottles.map { it.toList() }
@@ -724,10 +610,10 @@ class LevelSession(
 
     private val barProgressByName: MutableMap<String, BarProgressState> = mutableMapOf<String, BarProgressState>().apply {
         for (spec in CATALOG_BAR_SPECS) {
-            val barLayoutList = if (spec.barName == barName && levels !== DEFAULT_UNDER_LEVELS) {
+            val barLayoutList = if (spec.barName == barName && initialLevelsArg !== DEFAULT_UNDER_LEVELS) {
                 customInitialLevels
             } else {
-                defaultLevelsForRank(spec.rank)
+                LevelCatalog.levelsForBar(spec.barName)
             }
             put(spec.barName, BarProgressState(spec = spec, levels = barLayoutList))
         }
@@ -761,6 +647,15 @@ class LevelSession(
 
     private val barLevels: List<LevelLayout>
         get() = activeBarState.levels
+
+    val levels: List<LevelLayout>
+        get() = barLevels
+
+    val activeBarLevels: List<LevelLayout>
+        get() = barLevels
+
+    fun levelsForBar(targetBarName: String = currentBarName): List<LevelLayout> =
+        barProgressByName[targetBarName]?.levels ?: LevelCatalog.levelsForBar(targetBarName)
 
     private val unlockedLevels: BooleanArray
         get() = activeBarState.unlockedLevels
