@@ -34,6 +34,7 @@ class MainActivity : Activity() {
     private lateinit var staminaView: TextView
     private lateinit var bannerLayout: LinearLayout
     private lateinit var bannerTitleView: TextView
+    private lateinit var bannerStarsView: TextView
     private lateinit var bannerMovesView: TextView
     private lateinit var rackContainer: LinearLayout
     private lateinit var restartButtonView: TextView
@@ -97,12 +98,18 @@ class MainActivity : Activity() {
             textSize = 22f
             gravity = Gravity.CENTER
         }
+        bannerStarsView = TextView(this).apply {
+            setTextColor(Color.parseColor("#FFE56A"))
+            textSize = 20f
+            gravity = Gravity.CENTER
+        }
         bannerMovesView = TextView(this).apply {
             setTextColor(Color.parseColor("#79F6FF"))
             textSize = 16f
             gravity = Gravity.CENTER
         }
         bannerLayout.addView(bannerTitleView)
+        bannerLayout.addView(bannerStarsView)
         bannerLayout.addView(bannerMovesView)
         counterScreen.addView(
             bannerLayout,
@@ -350,6 +357,7 @@ class MainActivity : Activity() {
         if (banner != null) {
             bannerLayout.visibility = View.VISIBLE
             bannerTitleView.text = banner.title
+            bannerStarsView.text = "★".repeat(banner.stars) + "☆".repeat((3 - banner.stars).coerceAtLeast(0))
             bannerMovesView.text = "${snap.movesLabel}: ${banner.moves}"
         } else {
             bannerLayout.visibility = View.GONE

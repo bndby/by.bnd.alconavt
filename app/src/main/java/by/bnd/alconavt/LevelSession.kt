@@ -262,7 +262,9 @@ data class ActionButtonSnapshot(
 
 data class VictoryBannerSnapshot(
     val title: String,
-    val moves: Int
+    val moves: Int,
+    val stars: Int = 3,
+    val extraWaste: Int = 0
 )
 
 data class CounterSnapshot(
@@ -287,6 +289,9 @@ data class CounterSnapshot(
     val newGameButtonLabel: String? = defeatScreen?.newGameButtonLabel,
     val canStartLevel: Boolean = stamina >= 1,
     val chargedBottleIndices: Set<Int> = emptySet(),
+    val extraWaste: Int = 0,
+    val bestStars: Int = 0,
+    val recordedStars: Int = bestStars,
     val screen: ScreenId = ScreenId.COUNTER,
     val drinkCard: DrinkCardSnapshot? = null,
     val openedDrinkSheet: DrinkSheetSnapshot? = null
@@ -297,18 +302,20 @@ class LevelSession(
     initialBottles: List<List<Drink>>,
     initialStamina: Int = 120,
     initialCeiling: Int = 120,
-    val barName: String = "Under"
+    val barName: String = "Under",
+    val parMoves: Int = 0
 ) {
     private val startBottles: List<List<Drink>> = initialBottles.map { it.toList() }
     private val bottles: List<MutableList<Drink>> = startBottles.map { it.toMutableList() }
     private val history: MutableList<List<List<Drink>>> = mutableListOf()
-    private val chargedBottles: MutableSet<Int> = mutableSetOf()
+    private val chargedBottles: MutableMap<Int, Int> = mutableMapOf()
     private var selectedIndex: Int? = null
     private var moves: Int = 0
     private var stamina: Int = initialStamina.coerceAtLeast(0)
     private var staminaCeiling: Int = initialCeiling.coerceAtLeast(1)
     private var defeated: Boolean = stamina == 0
     private var won: Boolean = !defeated && isSolved()
+    private var bestStars: Int = if (won) currentRunStars() else 0
     private var openedDrinkCard: Drink? = null
     private var onCounter: Boolean = !defeated
 
@@ -369,6 +376,9 @@ class LevelSession(
 
     fun enterCounter() {
         if (!canStartLevel()) return
+        if (won) {
+            resetForNewRun()
+        }
         openedDrinkCard = null
         selectedIndex = null
         onCounter = true
@@ -378,10 +388,33 @@ class LevelSession(
 
     fun startLevel(): Boolean {
         if (!canStartLevel()) return false
+        if (won) {
+            resetForNewRun()
+        }
         openedDrinkCard = null
         selectedIndex = null
         onCounter = true
         return true
+    }
+
+    fun startNewRun(): Boolean {
+        if (!canStartLevel()) return false
+        resetForNewRun()
+        openedDrinkCard = null
+        selectedIndex = null
+        onCounter = true
+        return true
+    }
+
+    private fun resetForNewRun() {
+        startBottles.forEachIndexed { index, portions ->
+            bottles[index].clear()
+            bottles[index].addAll(portions)
+        }
+        history.clear()
+        chargedBottles.clear()
+        moves = 0
+        won = isSolved()
     }
 
     fun advanceTimeMinutes(minutes: Int) {
@@ -406,6 +439,7 @@ class LevelSession(
         selectedIndex = null
         openedDrinkCard = null
         won = isSolved()
+        bestStars = if (won) currentRunStars() else 0
         onCounter = true
     }
 
@@ -459,7 +493,8 @@ class LevelSession(
         moves++
         selectedIndex = null
         val completed = completedDrinkOf(dst)
-        if (completed != null && chargedBottles.add(toIndex)) {
+        if (completed != null && toIndex !in chargedBottles) {
+            chargedBottles[toIndex] = completed.enduranceCost
             stamina = (stamina - completed.enduranceCost).coerceAtLeast(0)
         }
         if (stamina == 0) {
@@ -470,6 +505,22 @@ class LevelSession(
         }
         if (isSolved()) {
             won = true
+            bestStars = maxOf(bestStars, currentRunStars())
+        }
+    }
+
+    private fun currentExtraWaste(): Int {
+        return chargedBottles.entries.sumOf { (index, cost) ->
+            if (bottles[index].isEmpty()) cost else 0
+        }
+    }
+
+    private fun currentRunStars(): Int {
+        val waste = currentExtraWaste()
+        return when {
+            waste == 0 -> 3
+            waste <= 2 -> 2
+            else -> 1
         }
     }
 
@@ -525,6 +576,8 @@ class LevelSession(
         val cardDrink = if (onCounter && !defeated) openedDrinkCard else null
         val canUndoOrRestart = !defeated && !won && history.isNotEmpty()
         val defeatSnap = if (defeated) DefeatScreenSnapshot() else null
+        val waste = currentExtraWaste()
+        val runStars = currentRunStars()
         return CounterSnapshot(
             capacity = capacity,
             glass = glass,
@@ -538,10 +591,13 @@ class LevelSession(
             staminaCeiling = staminaCeiling,
             restartButton = if (defeated || won) null else ActionButtonSnapshot(title = "Сначала", enabled = canUndoOrRestart),
             undoButton = if (defeated) null else ActionButtonSnapshot(title = "Отмена хода", enabled = canUndoOrRestart),
-            victoryBanner = if (!defeated && won) VictoryBannerSnapshot(title = "Победа", moves = moves) else null,
+            victoryBanner = if (!defeated && won) VictoryBannerSnapshot(title = "Победа", moves = moves, stars = runStars, extraWaste = waste) else null,
             defeatScreen = defeatSnap,
             canStartLevel = !defeated && stamina >= 1,
-            chargedBottleIndices = chargedBottles.toSet(),
+            chargedBottleIndices = chargedBottles.keys.toSet(),
+            extraWaste = waste,
+            bestStars = bestStars,
+            recordedStars = bestStars,
             screen = when {
                 defeated -> ScreenId.DEFEAT
                 !onCounter -> ScreenId.FILM

@@ -1776,4 +1776,413 @@ class LevelSessionTest {
             chartreuse.facts
         )
     }
+
+    @Test
+    fun `чистая победа без пустых оплаченных бутылок имеет лишнюю трату 0, даёт 3 звезды на плашке Победа и записывает 3 звезды уровня`() {
+        val session = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.PILSNER_URQUELL, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.PILSNER_URQUELL, Drink.GUINNESS_DRAUGHT, Drink.PILSNER_URQUELL),
+                emptyList(),
+                emptyList()
+            )
+        )
+
+        assertEquals(0, session.snapshot().bestStars)
+        assertEquals(0, session.snapshot().recordedStars)
+
+        session.tapBottle(0)
+        session.tapBottle(2)
+        session.tapBottle(0)
+        session.tapBottle(3)
+        session.tapBottle(1)
+        session.tapBottle(3)
+        session.tapBottle(1)
+        session.tapBottle(2)
+        session.tapBottle(0)
+        session.tapBottle(2)
+        session.tapBottle(1)
+        session.tapBottle(3)
+
+        val won = session.snapshot()
+        val banner = won.victoryBanner
+        assertNotNull(banner)
+        assertEquals("Победа", banner!!.title)
+        assertEquals(0, banner.extraWaste)
+        assertEquals(3, banner.stars)
+        assertEquals(6, banner.moves)
+        assertEquals(0, won.extraWaste)
+        assertEquals(3, won.bestStars)
+        assertEquals(3, won.recordedStars)
+    }
+
+    @Test
+    fun `лишняя трата равна сумме цен оплаченных в заходе бутылок которые к победе пусты, даёт 2 звезды при трате 1 или 2 и 1 звезду при трате 3 и больше, а собранная разбитая и снова собранная бутылка в лишнюю трату не входит`() {
+        // 1. Оплаченная бутылка Guinness Draught (цена 1) к победе пуста -> лишняя трата 1 -> 2 звезды
+        val waste1Session = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.PILSNER_URQUELL),
+                listOf(Drink.PILSNER_URQUELL, Drink.PILSNER_URQUELL),
+                emptyList()
+            )
+        )
+        // Ход 1: PILSNER из 1 в 2 -> бутылка 2 собрана (списано 1 за Pilsner)
+        waste1Session.tapBottle(1)
+        waste1Session.tapBottle(2)
+        // Ход 2: GUINNESS из 1 в 0 -> бутылка 0 собрана (списано 1 за Guinness), но уровень уже собран!
+        // Чтобы проверить пустую оплаченную бутылку до победы: возьмём расстановку, где бутылку собрали и вылили до победы.
+        val wasteOne = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.APEROL),
+                listOf(Drink.APEROL, Drink.APEROL),
+                emptyList()
+            )
+        )
+        // Ход 1: APEROL из 1 в 3 (не собрана)
+        wasteOne.tapBottle(1)
+        wasteOne.tapBottle(3)
+        // Ход 2: GUINNESS из 1 в 0 -> бутылка 0 собрана (Guinness, цена 1), в бутылке 3 лежит 1 APEROL, в 2 лежит 2 APEROL (ещё не победа)
+        wasteOne.tapBottle(1)
+        wasteOne.tapBottle(0)
+        assertNull(wasteOne.snapshot().victoryBanner)
+        // Ход 3: переливаем весь собранный GUINNESS из бутылки 0 в пустую бутылку 1 -> бутылка 0 теперь ПУСТА и оплачена (цена 1), бутылка 1 оплачена и полна
+        wasteOne.tapBottle(0)
+        wasteOne.tapBottle(1)
+        assertNull(wasteOne.snapshot().victoryBanner)
+        // Ход 4: APEROL из 3 в 2 -> собирает APEROL и завершает уровень
+        wasteOne.tapBottle(3)
+        wasteOne.tapBottle(2)
+
+        val snapWaste1 = wasteOne.snapshot()
+        assertNotNull(snapWaste1.victoryBanner)
+        assertEquals(1, snapWaste1.extraWaste)
+        assertEquals(1, snapWaste1.victoryBanner!!.extraWaste)
+        assertEquals(2, snapWaste1.victoryBanner!!.stars)
+        assertEquals(4, snapWaste1.victoryBanner!!.moves)
+        assertEquals(2, snapWaste1.bestStars)
+
+        // 2. Оплаченная бутылка Aperol (цена 2) к победе пуста -> лишняя трата 2 -> 2 звезды
+        val wasteTwo = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.APEROL, Drink.APEROL),
+                listOf(Drink.APEROL, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                emptyList()
+            )
+        )
+        wasteTwo.tapBottle(1)
+        wasteTwo.tapBottle(3) // GUINNESS -> 3
+        wasteTwo.tapBottle(1)
+        wasteTwo.tapBottle(0) // бутылка 0 собрана APEROL (цена 2)
+        wasteTwo.tapBottle(0)
+        wasteTwo.tapBottle(1) // перелили APEROL из 0 в 1 -> бутылка 0 пуста (оплачена ценой 2)
+        wasteTwo.tapBottle(3)
+        wasteTwo.tapBottle(2) // собираем GUINNESS в 2 -> победа
+
+        val snapWaste2 = wasteTwo.snapshot()
+        assertEquals(2, snapWaste2.extraWaste)
+        assertEquals(2, snapWaste2.victoryBanner!!.extraWaste)
+        assertEquals(2, snapWaste2.victoryBanner!!.stars)
+        assertEquals(2, snapWaste2.bestStars)
+
+        // 3. Оплаченная бутылка Chartreuse Verte (цена 3) к победе пуста -> лишняя трата 3 -> 1 звезда
+        val wasteThree = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.CHARTREUSE_VERTE, Drink.CHARTREUSE_VERTE),
+                listOf(Drink.CHARTREUSE_VERTE, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                emptyList()
+            )
+        )
+        wasteThree.tapBottle(1)
+        wasteThree.tapBottle(3)
+        wasteThree.tapBottle(1)
+        wasteThree.tapBottle(0) // бутылка 0 собрана CHARTREUSE_VERTE (цена 3)
+        wasteThree.tapBottle(0)
+        wasteThree.tapBottle(1) // бутылка 0 пуста (трата 3)
+        wasteThree.tapBottle(3)
+        wasteThree.tapBottle(2) // победа
+
+        val snapWaste3 = wasteThree.snapshot()
+        assertEquals(3, snapWaste3.extraWaste)
+        assertEquals(3, snapWaste3.victoryBanner!!.extraWaste)
+        assertEquals(1, snapWaste3.victoryBanner!!.stars)
+        assertEquals(1, snapWaste3.bestStars)
+
+        // 4. Бутылка, собранная, разбитая (опустошённая) и к победе собранная снова, в лишнюю трату не входит -> лишняя трата 0 -> 3 звезды
+        val rebuiltBottle = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.CHARTREUSE_VERTE, Drink.CHARTREUSE_VERTE),
+                listOf(Drink.CHARTREUSE_VERTE, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                emptyList()
+            )
+        )
+        rebuiltBottle.tapBottle(1)
+        rebuiltBottle.tapBottle(3) // 1 GUINNESS в 3
+        rebuiltBottle.tapBottle(1)
+        rebuiltBottle.tapBottle(0) // бутылка 0 собрана CHARTREUSE_VERTE (цена 3 списана с бутылки 0)
+        // Разбиваем бутылку 0 частично в неполную бутылку 3 (напиток другой — нельзя), поэтому разобьём через отмену или частичный перелив:
+        // В бутылке 2 лежит 2 GUINNESS, перельём 2 GUINNESS из 2 в 3 -> бутылка 3 собрана GUINNESS, а бутылка 2 пуста (не была оплачена!)
+        // Но если мы перельём 2 порции CHARTREUSE из бутылки 0 в бутылку, где уже лежит 1 CHARTREUSE:
+        val rebuiltPartial = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.CHARTREUSE_VERTE, Drink.CHARTREUSE_VERTE),
+                listOf(Drink.CHARTREUSE_VERTE, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.APEROL, Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.APEROL, Drink.APEROL)
+            )
+        )
+        // Ход 1: из 2 (2 GUINNESS) некуда, но из 1 (1 GUINNESS) можно на 2? В 2 уже 3 порции.
+        // Сделаем проще: бутылка 0 собрана, затем отмена хода её разбирает, а потом её собирают снова к победе:
+        rebuiltBottle.undoMove() // бутылка 0 снова неполная (2 CHARTREUSE), хотя остаётся оплаченной (charged)
+        assertTrue(rebuiltBottle.snapshot().bottles[0].charged)
+        // Снова собираем бутылку 0 и завершаем уровень так, что все оплаченные бутылки к победе полны
+        rebuiltBottle.tapBottle(1)
+        rebuiltBottle.tapBottle(0) // бутылка 0 снова собрана!
+        rebuiltBottle.tapBottle(3)
+        rebuiltBottle.tapBottle(2) // бутылка 2 собрана GUINNESS, бутылки 1 и 3 пусты и НЕ оплачены
+
+        val snapRebuilt = rebuiltBottle.snapshot()
+        assertEquals(0, snapRebuilt.extraWaste)
+        assertEquals(0, snapRebuilt.victoryBanner!!.extraWaste)
+        assertEquals(3, snapRebuilt.victoryBanner!!.stars)
+        assertEquals(3, snapRebuilt.bestStars)
+
+        // 4б. Сборка бутылки 0 обычным переливом, затем разборка обычным переливом в пустую и повторная сборка обратно к победе
+        val rebuiltByPours = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.PILSNER_URQUELL),
+                listOf(Drink.PILSNER_URQUELL, Drink.PILSNER_URQUELL),
+                emptyList(),
+                emptyList()
+            )
+        )
+        rebuiltByPours.tapBottle(1)
+        rebuiltByPours.tapBottle(3) // 1 PILSNER в 3
+        rebuiltByPours.tapBottle(1)
+        rebuiltByPours.tapBottle(0) // бутылка 0 собрана GUINNESS (списано 1 с бутылки 0)
+        rebuiltByPours.tapBottle(0)
+        rebuiltByPours.tapBottle(4) // бутылка 0 полностью вылита в 4 (списано 1 с бутылки 4), бутылка 0 пуста
+        rebuiltByPours.tapBottle(4)
+        rebuiltByPours.tapBottle(0) // бутылка 4 вылита обратно в 0 -> бутылка 0 снова полна и в лишнюю трату не входит, а пуста только бутылка 4 (трата 1, а не 2!)
+        rebuiltByPours.tapBottle(3)
+        rebuiltByPours.tapBottle(2) // победа
+
+        val snapRebuiltByPours = rebuiltByPours.snapshot()
+        assertEquals(1, snapRebuiltByPours.extraWaste) // только пустая бутылка 4 (цена 1), а заново собранная бутылка 0 в трату не вошла
+        assertEquals(2, snapRebuiltByPours.victoryBanner!!.stars)
+
+        // 4в. Бутылка 0 собрана (цена 3), полностью опустошена через промежуточные неполные бутылки без оплаты других пустых бутылок, и снова собрана к победе -> лишняя трата 0 -> 3 звезды
+        val rebuiltClean = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.CHARTREUSE_VERTE, Drink.CHARTREUSE_VERTE),
+                listOf(Drink.APEROL, Drink.CHARTREUSE_VERTE),
+                listOf(Drink.APEROL, Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.APEROL),
+                emptyList(),
+                emptyList()
+            )
+        )
+        // Ход 1: из 1 (1 CHARTREUSE) в 0 -> бутылка 0 собрана CHARTREUSE (оплачена 3)
+        rebuiltClean.tapBottle(1)
+        rebuiltClean.tapBottle(0)
+        assertTrue(rebuiltClean.snapshot().bottles[0].charged)
+        // Ход 2: из 3 (1 APEROL) в 1 -> в 1 теперь 2 APEROL (не полна, не оплачена)
+        rebuiltClean.tapBottle(3)
+        rebuiltClean.tapBottle(1)
+        // Ход 3: из 2 (2 GUINNESS) в 3 -> бутылка 3 собрана GUINNESS (оплачена 1) и останется полной до конца!
+        rebuiltClean.tapBottle(2)
+        rebuiltClean.tapBottle(3)
+        // Ход 4: из 1 (2 APEROL) в 2 -> бутылка 2 собрана APEROL (оплачена 2) и останется полной до конца! Бутылка 1 теперь пуста и НЕ оплачена.
+        rebuiltClean.tapBottle(1)
+        rebuiltClean.tapBottle(2)
+        // Ход 5: чтобы опустошить и заново собрать бутылку 0 без оплаты пустой бутылки:
+        // Если нажать Сначала (возврат к старту сохраняет отметку списания на бутылке 0, опустошая собранное состояние), и затем чисто собрать уровень:
+        rebuiltClean.restartRun()
+        assertTrue(rebuiltClean.snapshot().bottles[0].charged)
+        // Теперь решаем с нуля: бутылка 0 к победе снова собрана, а пустые бутылки 4 и 5 никогда не собирались
+        rebuiltClean.tapBottle(1)
+        rebuiltClean.tapBottle(0) // бутылка 0 снова собрана CHARTREUSE
+        rebuiltClean.tapBottle(3)
+        rebuiltClean.tapBottle(1) // 2 APEROL в 1
+        rebuiltClean.tapBottle(2)
+        rebuiltClean.tapBottle(3) // бутылка 3 собрана GUINNESS
+        rebuiltClean.tapBottle(1)
+        rebuiltClean.tapBottle(2) // бутылка 2 собрана APEROL -> победа!
+
+        val snapRebuiltClean = rebuiltClean.snapshot()
+        assertNotNull(snapRebuiltClean.victoryBanner)
+        assertEquals(0, snapRebuiltClean.extraWaste)
+        assertEquals(3, snapRebuiltClean.victoryBanner!!.stars)
+        assertEquals(3, snapRebuiltClean.bestStars)
+    }
+
+    @Test
+    fun `плашка Победа показывает звёзды и число оставшихся не отменённых ходов, отмена хода оценку не снижает и не мешает трём звёздам, а норматив расстановки на плашку не выводится и звёзды не считает`() {
+        val session = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.PILSNER_URQUELL),
+                listOf(Drink.PILSNER_URQUELL, Drink.PILSNER_URQUELL),
+                emptyList(),
+                emptyList()
+            ),
+            parMoves = 2
+        )
+
+        // Делаем лишние переливания без сборки и отменяем часть из них
+        session.tapBottle(1)
+        session.tapBottle(3) // ход 1: PILSNER в 3
+        session.tapBottle(3)
+        session.tapBottle(4) // ход 2: PILSNER из 3 в 4
+        session.undoMove()   // отмена хода 2 -> счётчик ходов снова 1
+        session.tapBottle(3)
+        session.tapBottle(4) // ход 2
+        session.tapBottle(4)
+        session.tapBottle(3) // ход 3
+        session.undoMove()   // отмена хода 3 -> счётчик ходов снова 2
+
+        // Завершаем уровень за 4 оставшихся не отменённых хода (больше норматива 2!), но с лишней тратой 0
+        session.tapBottle(4)
+        session.tapBottle(2) // ход 3: бутылка 2 собрана PILSNER
+        session.tapBottle(1)
+        session.tapBottle(0) // ход 4: бутылка 0 собрана GUINNESS -> победа
+
+        val won = session.snapshot()
+        val banner = won.victoryBanner
+        assertNotNull(banner)
+        assertEquals("Победа", banner!!.title)
+        assertEquals(3, banner.stars)
+        assertEquals(4, banner.moves)
+        assertEquals(0, banner.extraWaste)
+        assertEquals(3, won.bestStars)
+    }
+
+    @Test
+    fun `записанные звёзды уровня растут при более сильном повторе, не снижаются при слабом повторе, а гибель в ноль на победном ходе звёзды не записывает и уже записанные не стирает`() {
+        val session = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.CHARTREUSE_VERTE, Drink.CHARTREUSE_VERTE),
+                listOf(Drink.CHARTREUSE_VERTE, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                emptyList()
+            ),
+            initialStamina = 10
+        )
+
+        // Заход 1: победа с пустой оплаченной бутылкой Chartreuse Verte (лишняя трата 3 -> 1 звезда)
+        session.tapBottle(1)
+        session.tapBottle(3)
+        session.tapBottle(1)
+        session.tapBottle(0) // собрали бутылку 0 (Chartreuse, цена 3; stamina: 10 -> 7)
+        session.tapBottle(0)
+        session.tapBottle(1) // перелили в 1 (Chartreuse, цена 3; stamina: 7 -> 4), бутылка 0 пуста и оплачена
+        session.tapBottle(3)
+        session.tapBottle(2) // собрали бутылку 2 (Guinness, цена 1; stamina: 4 -> 3) -> победа
+
+        val afterFirstWin = session.snapshot()
+        assertEquals(1, afterFirstWin.victoryBanner!!.stars)
+        assertEquals(1, afterFirstWin.bestStars)
+        assertEquals(1, afterFirstWin.recordedStars)
+
+        // Выходим с плашки победы и начинаем новый заход того же уровня со стартовой расстановки
+        session.leaveCounter()
+        assertTrue(session.startLevel())
+        val secondRunStart = session.snapshot()
+        assertNull(secondRunStart.victoryBanner)
+        assertEquals(0, secondRunStart.moves)
+        assertTrue(secondRunStart.bottles.none { it.charged })
+        assertEquals(1, secondRunStart.bestStars)
+
+        // Заход 2: чистая победа без пустых оплаченных бутылок (лишняя трата 0 -> 3 звезды; stamina: 3 -> 0? Нет: Chartreuse 3 + Guinness 1 = 4, поэтому поднимем запас временем до 10)
+        session.advanceTimeMinutes(35) // +7 -> stamina = 10
+        session.tapBottle(1)
+        session.tapBottle(2) // собрали бутылку 2 (Guinness, цена 1; stamina: 10 -> 9)
+        session.tapBottle(1)
+        session.tapBottle(0) // собрали бутылку 0 (Chartreuse, цена 3; stamina: 9 -> 6) -> чистая победа!
+
+        val afterBetterWin = session.snapshot()
+        assertEquals(0, afterBetterWin.extraWaste)
+        assertEquals(3, afterBetterWin.victoryBanner!!.stars)
+        assertEquals(3, afterBetterWin.bestStars)
+        assertEquals(3, afterBetterWin.recordedStars)
+
+        // Заход 3: слабый повтор на 1 звезду (лишняя трата 3) — плашка показывает 1 звезду захода, но записанные звёзды уровня остаются 3
+        session.advanceTimeMinutes(30) // stamina -> 12
+        session.leaveCounter()
+        assertTrue(session.startLevel())
+        session.tapBottle(1)
+        session.tapBottle(3)
+        session.tapBottle(1)
+        session.tapBottle(0) // списано 3 (12 -> 9)
+        session.tapBottle(0)
+        session.tapBottle(1) // списано 3 (9 -> 6), бутылка 0 пуста
+        session.tapBottle(3)
+        session.tapBottle(2) // списано 1 (6 -> 5) -> победа с 1 звездой
+
+        val afterWorseReplay = session.snapshot()
+        assertEquals(3, afterWorseReplay.extraWaste)
+        assertEquals(1, afterWorseReplay.victoryBanner!!.stars)
+        assertEquals(3, afterWorseReplay.bestStars)
+        assertEquals(3, afterWorseReplay.recordedStars)
+
+        // Заход 4: гибель в ноль на ходе, который собрал уровень — уже записанные 3 звезды НЕ стираются
+        // Сейчас stamina = 5. Нам нужно, чтобы к последнему ходу осталось 3 и сборка Chartreuse (цена 3) опустила в 0:
+        // Если в заходе 4 сперва собрать Guinness в 2 (цена 1: 5 -> 4), перелить в 3 (цена 1: 4 -> 3), и собрать Chartreuse в 0 (цена 3: 3 -> 0):
+        session.leaveCounter()
+        assertTrue(session.startLevel())
+        session.tapBottle(1)
+        session.tapBottle(2) // Guinness в 2 собран (5 -> 4)
+        session.tapBottle(2)
+        session.tapBottle(3) // Guinness в 3 собран (4 -> 3)
+        session.tapBottle(1)
+        session.tapBottle(0) // Chartreuse в 0 собирает уровень, но опускает запас 3 -> 0 (гибель!)
+
+        val afterDefeatOnSolved = session.snapshot()
+        assertEquals(ScreenId.DEFEAT, afterDefeatOnSolved.screen)
+        assertEquals(0, afterDefeatOnSolved.currentEndurance)
+        assertNull(afterDefeatOnSolved.victoryBanner)
+        assertEquals(3, afterDefeatOnSolved.bestStars)
+        assertEquals(3, afterDefeatOnSolved.recordedStars)
+
+        // А на уровне, где звёзд ещё не было, гибель на ходе, который собрал уровень, звёзды не записывает (остаётся 0)
+        val firstRunFatal = LevelSession(
+            capacity = 3,
+            initialBottles = listOf(
+                listOf(Drink.GUINNESS_DRAUGHT, Drink.GUINNESS_DRAUGHT),
+                listOf(Drink.GUINNESS_DRAUGHT),
+                emptyList(),
+                emptyList()
+            ),
+            initialStamina = 1
+        )
+        firstRunFatal.tapBottle(1)
+        firstRunFatal.tapBottle(0) // собирает бутылку 0, запас 1 -> 0 -> гибель
+        val fatalSnap = firstRunFatal.snapshot()
+        assertEquals(ScreenId.DEFEAT, fatalSnap.screen)
+        assertNull(fatalSnap.victoryBanner)
+        assertEquals(0, fatalSnap.bestStars)
+        assertEquals(0, fatalSnap.recordedStars)
+
+        // Новая игра стирает записанные звёзды вместе с остальным прогрессом
+        session.startNewGame()
+        val afterNewGame = session.snapshot()
+        assertEquals(0, afterNewGame.bestStars)
+        assertEquals(0, afterNewGame.recordedStars)
+    }
 }
