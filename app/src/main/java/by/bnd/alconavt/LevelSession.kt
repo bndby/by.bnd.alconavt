@@ -181,6 +181,9 @@ data class BottleIllustrationSnapshot(
 )
 
 enum class ScreenId {
+    WORLD_MAP,
+    CITY_MAP,
+    STREET_MAP,
     LEVEL_FILMSTRIP,
     COUNTER,
     DRINK_CARD,
@@ -188,9 +191,80 @@ enum class ScreenId {
     DEFEAT;
 
     companion object {
+        val WORLD: ScreenId get() = WORLD_MAP
+        val CITY: ScreenId get() = CITY_MAP
+        val STREET: ScreenId get() = STREET_MAP
         val FILM: ScreenId get() = LEVEL_FILMSTRIP
     }
 }
+
+data class WorldCityPointSnapshot(
+    val name: String,
+    val bright: Boolean,
+    val dimmed: Boolean = !bright,
+    val earnedStars: Int? = null,
+    val totalStars: Int? = null,
+    val fractionText: String? = if (earnedStars != null && totalStars != null) "$earnedStars/$totalStars" else null
+)
+
+data class WorldMapSnapshot(
+    val cities: List<WorldCityPointSnapshot>,
+    val quietBorders: List<String> = listOf(
+        "Польша",
+        "Литва",
+        "Латвия",
+        "Эстония",
+        "Украина",
+        "Беларусь — Россия"
+    ),
+    val excludedRegions: List<String> = listOf(
+        "Калининград",
+        "Сахалин",
+        "Чукотка",
+        "Камчатка",
+        "Новая Земля",
+        "Крым"
+    ),
+    val hasStepColumn: Boolean = false,
+    val hasFreeZoom: Boolean = false,
+    val countryIsStep: Boolean = false,
+    val usesCustomPixelMap: Boolean = true,
+    val usesThirdPartyTiles: Boolean = false,
+    val northOnTop: Boolean = true,
+    val citiesArtificiallySpread: Boolean = false,
+    val noticeText: String? = null
+)
+
+data class CityStreetStrokeSnapshot(
+    val name: String,
+    val bright: Boolean,
+    val dimmed: Boolean = !bright,
+    val description: String = ""
+)
+
+data class CityMapSnapshot(
+    val cityName: String,
+    val playableStreet: CityStreetStrokeSnapshot,
+    val streets: List<CityStreetStrokeSnapshot>
+)
+
+data class StreetBarPointSnapshot(
+    val name: String,
+    val rank: Int,
+    val levelCount: Int = rank * 4 + 4,
+    val bright: Boolean = true,
+    val earnedStars: Int = 0,
+    val totalStars: Int = levelCount * 3
+)
+
+data class StreetMapSnapshot(
+    val cityName: String,
+    val streetName: String,
+    val walkingOrderDescription: String,
+    val bars: List<StreetBarPointSnapshot>,
+    val pondWaterSize: String? = null,
+    val surroundingStreets: List<String> = emptyList()
+)
 
 data class LevelLayout(
     val levelNumber: Int,
@@ -473,17 +547,30 @@ data class CounterSnapshot(
     val barAwardedBonus: Int = awardedBarBonus,
     val awardedBarBonuses: Map<String, Int> = emptyMap(),
     val screen: ScreenId = ScreenId.COUNTER,
+    val cityName: String = "Минск",
     val streetName: String = "Зыбицкая",
     val barName: String = "Under",
     val levelNumber: Int = 1,
-    val pathText: String = if (screen == ScreenId.LEVEL_FILMSTRIP) "$streetName · $barName" else "$streetName · $barName · Уровень $levelNumber",
-    val backButtonLabel: String = "Назад",
-    val backButton: ActionButtonSnapshot? = if (screen == ScreenId.DEFEAT) null else ActionButtonSnapshot(title = backButtonLabel, enabled = true),
+    val pathText: String = when (screen) {
+        ScreenId.WORLD_MAP -> "Мир"
+        ScreenId.CITY_MAP -> cityName
+        ScreenId.STREET_MAP -> "$cityName · $streetName"
+        ScreenId.LEVEL_FILMSTRIP -> "$streetName · $barName"
+        else -> "$streetName · $barName · Уровень $levelNumber"
+    },
+    val hasBackButton: Boolean = screen != ScreenId.WORLD_MAP && screen != ScreenId.DEFEAT,
+    val backButtonLabel: String? = if (hasBackButton) "Назад" else null,
+    val backButton: ActionButtonSnapshot? = if (hasBackButton) ActionButtonSnapshot(title = "Назад", enabled = true) else null,
+    val worldMap: WorldMapSnapshot? = null,
+    val cityMap: CityMapSnapshot? = null,
+    val streetMap: StreetMapSnapshot? = null,
+    val worldMapNotice: String? = worldMap?.noticeText,
+    val noticeText: String? = worldMapNotice,
     val levelCards: List<LevelCardSnapshot> = emptyList(),
     val filmstrip: FilmstripSnapshot = FilmstripSnapshot(
         streetName = streetName,
         barName = barName,
-        pathText = "$streetName · $barName",
+        pathText = pathText,
         stamina = stamina,
         staminaCeiling = staminaCeiling,
         enduranceText = "$stamina/$staminaCeiling",
@@ -497,12 +584,69 @@ data class CounterSnapshot(
     val openedDrinkSheet: DrinkSheetSnapshot? = null
 )
 
+private data class CatalogBarSpec(
+    val cityName: String,
+    val streetName: String,
+    val barName: String,
+    val rank: Int
+) {
+    val levelCount: Int get() = rank * 4 + 4
+}
+
+private val CATALOG_BAR_SPECS: List<CatalogBarSpec> = listOf(
+    CatalogBarSpec("Минск", "Зыбицкая", "Under", 1),
+    CatalogBarSpec("Минск", "Зыбицкая", "Койот", 1),
+    CatalogBarSpec("Минск", "Зыбицкая", "Zodiac", 2),
+    CatalogBarSpec("Минск", "Зыбицкая", "Рядом", 2),
+    CatalogBarSpec("Минск", "Зыбицкая", "Белый Налив", 3),
+    CatalogBarSpec("Минск", "Зыбицкая", "Горький", 3),
+    CatalogBarSpec("Минск", "Зыбицкая", "На дне", 4),
+    CatalogBarSpec("Минск", "Зыбицкая", "Матрешка", 4),
+    CatalogBarSpec("Витебск", "Суворова", "Золотой лев", 1),
+    CatalogBarSpec("Витебск", "Суворова", "Марвин", 2),
+    CatalogBarSpec("Витебск", "Суворова", "«Damask» Kafe-Bar", 3),
+    CatalogBarSpec("Витебск", "Суворова", "Аптека бар", 4),
+    CatalogBarSpec("Москва", "Патрики", "Киану", 1),
+    CatalogBarSpec("Москва", "Патрики", "Bro&n", 2),
+    CatalogBarSpec("Москва", "Патрики", "Зойка", 4)
+)
+
+private fun defaultLevelsForRank(rank: Int): List<LevelLayout> {
+    val total = rank * 4 + 4
+    return (1..total).map { levelNumber ->
+        val template = DEFAULT_UNDER_LEVELS[(levelNumber - 1) % DEFAULT_UNDER_LEVELS.size]
+        template.copy(
+            levelNumber = levelNumber,
+            initialBottles = template.initialBottles.map { it.toList() }
+        )
+    }
+}
+
 private data class SavedRunState(
     val bottles: List<List<Drink>>,
     val history: List<List<List<Drink>>>,
     val chargedBottles: Map<Int, Int>,
     val moves: Int
 )
+
+private class BarProgressState(
+    val spec: CatalogBarSpec,
+    val levels: List<LevelLayout>
+) {
+    val unlockedLevels: BooleanArray = BooleanArray(levels.size) { it == 0 }
+    val bestStarsByLevel: IntArray = IntArray(levels.size) { 0 }
+    val unfinishedRuns: MutableMap<Int, SavedRunState> = mutableMapOf()
+    var bonusAwarded: Int = 0
+
+    fun reset() {
+        for (i in unlockedLevels.indices) {
+            unlockedLevels[i] = (i == 0)
+            bestStarsByLevel[i] = 0
+        }
+        unfinishedRuns.clear()
+        bonusAwarded = 0
+    }
+}
 
 class LevelSession(
     val levels: List<LevelLayout> = DEFAULT_UNDER_LEVELS,
@@ -512,8 +656,33 @@ class LevelSession(
     initialCeiling: Int = 120,
     initialRecoveryProgressMillis: Long = 0L,
     private val startOnFilmstrip: Boolean = false,
+    private val startOnWorldMap: Boolean = false,
     private val awardsBarBonusOnCompletion: Boolean = true
 ) {
+    companion object {
+        fun createLiveGame(
+            initialStamina: Int = 120,
+            initialCeiling: Int = 120,
+            initialRecoveryProgressMillis: Long = 0L
+        ): LevelSession = LevelSession(
+            initialStamina = initialStamina,
+            initialCeiling = initialCeiling,
+            initialRecoveryProgressMillis = initialRecoveryProgressMillis,
+            startOnWorldMap = true,
+            awardsBarBonusOnCompletion = true
+        )
+
+        fun createAppSession(
+            initialStamina: Int = 120,
+            initialCeiling: Int = 120,
+            initialRecoveryProgressMillis: Long = 0L
+        ): LevelSession = createLiveGame(
+            initialStamina = initialStamina,
+            initialCeiling = initialCeiling,
+            initialRecoveryProgressMillis = initialRecoveryProgressMillis
+        )
+    }
+
     constructor(
         capacity: Int,
         initialBottles: List<List<Drink>>,
@@ -538,10 +707,11 @@ class LevelSession(
         initialCeiling = initialCeiling,
         initialRecoveryProgressMillis = initialRecoveryProgressMillis,
         startOnFilmstrip = false,
+        startOnWorldMap = false,
         awardsBarBonusOnCompletion = false
     )
 
-    private val barLevels: List<LevelLayout> = if (levels.isNotEmpty()) {
+    private val customInitialLevels: List<LevelLayout> = if (levels.isNotEmpty()) {
         levels.mapIndexed { idx, layout ->
             layout.copy(
                 levelNumber = idx + 1,
@@ -552,10 +722,56 @@ class LevelSession(
         DEFAULT_UNDER_LEVELS
     }
 
+    private val barProgressByName: MutableMap<String, BarProgressState> = mutableMapOf<String, BarProgressState>().apply {
+        for (spec in CATALOG_BAR_SPECS) {
+            val barLayoutList = if (spec.barName == barName && levels !== DEFAULT_UNDER_LEVELS) {
+                customInitialLevels
+            } else {
+                defaultLevelsForRank(spec.rank)
+            }
+            put(spec.barName, BarProgressState(spec = spec, levels = barLayoutList))
+        }
+        if (barName !in this) {
+            val inferredCity = when (streetName) {
+                "Суворова" -> "Витебск"
+                "Патрики" -> "Москва"
+                else -> "Минск"
+            }
+            val customSpec = CatalogBarSpec(
+                cityName = inferredCity,
+                streetName = streetName,
+                barName = barName,
+                rank = 1
+            )
+            put(barName, BarProgressState(spec = customSpec, levels = customInitialLevels))
+        }
+    }
+
+    private var currentCityName: String = barProgressByName[barName]?.spec?.cityName ?: when (streetName) {
+        "Суворова" -> "Витебск"
+        "Патрики" -> "Москва"
+        else -> "Минск"
+    }
+    private var currentStreetName: String = barProgressByName[barName]?.spec?.streetName ?: streetName
+    private var currentBarName: String = barName
+    private var hasNavigatedMap: Boolean = startOnWorldMap
+
+    private val activeBarState: BarProgressState
+        get() = barProgressByName.getValue(currentBarName)
+
+    private val barLevels: List<LevelLayout>
+        get() = activeBarState.levels
+
+    private val unlockedLevels: BooleanArray
+        get() = activeBarState.unlockedLevels
+
+    private val bestStarsByLevel: IntArray
+        get() = activeBarState.bestStarsByLevel
+
+    private val unfinishedRuns: MutableMap<Int, SavedRunState>
+        get() = activeBarState.unfinishedRuns
+
     private var activeLevelIndex: Int = 0
-    private val unlockedLevels: BooleanArray = BooleanArray(barLevels.size) { it == 0 }
-    private val bestStarsByLevel: IntArray = IntArray(barLevels.size) { 0 }
-    private val unfinishedRuns: MutableMap<Int, SavedRunState> = mutableMapOf()
     private val awardedBarBonuses: MutableMap<String, Int> = mutableMapOf(barName to 0)
 
     private var startBottles: List<List<Drink>> = barLevels[0].initialBottles.map { it.toList() }
@@ -569,9 +785,11 @@ class LevelSession(
     private var recoveryRemainderMillis: Long = initialRecoveryProgressMillis.coerceIn(0L, 299_999L)
     private var lastClockTimeMillis: Long? = null
     private var defeated: Boolean = stamina == 0
-    private var won: Boolean = !defeated && !startOnFilmstrip && isSolved()
+    private var won: Boolean = !defeated && !startOnFilmstrip && !startOnWorldMap && isSolved()
     private var openedDrinkCard: Drink? = null
-    private var onCounter: Boolean = !defeated && !startOnFilmstrip
+    private var onCounter: Boolean = !defeated && !startOnFilmstrip && !startOnWorldMap
+    private var mapScreen: ScreenId? = if (startOnWorldMap) ScreenId.WORLD_MAP else null
+    private var worldNotice: String? = null
 
     val parMoves: Int
         get() = barLevels[activeLevelIndex].parMoves
@@ -605,10 +823,11 @@ class LevelSession(
         if (bestStarsByLevel.any { it <= 0 }) return
         val sumStars = bestStarsByLevel.sum()
         val roundedBonus = ((sumStars * 2 + levelCount) / (2 * levelCount)).coerceIn(1, 3)
-        val alreadyAwarded = awardedBarBonuses[barName] ?: 0
+        val alreadyAwarded = awardedBarBonuses[currentBarName] ?: 0
         if (roundedBonus > alreadyAwarded) {
             val delta = roundedBonus - alreadyAwarded
-            awardedBarBonuses[barName] = roundedBonus
+            awardedBarBonuses[currentBarName] = roundedBonus
+            activeBarState.bonusAwarded = roundedBonus
             staminaCeiling += delta
             stamina = (stamina + delta).coerceAtMost(staminaCeiling)
         }
@@ -664,6 +883,7 @@ class LevelSession(
         }
         selectedIndex = null
         openedDrinkCard = null
+        mapScreen = null
         onCounter = true
     }
 
@@ -720,6 +940,94 @@ class LevelSession(
         openedDrinkCard = completed
     }
 
+    fun openWorldMap() {
+        if (defeated) return
+        if (onCounter) {
+            saveCurrentRunIfUnfinished()
+        }
+        onCounter = false
+        openedDrinkCard = null
+        selectedIndex = null
+        worldNotice = null
+        hasNavigatedMap = true
+        mapScreen = ScreenId.WORLD_MAP
+    }
+
+    fun tapCity(cityName: String): Boolean {
+        if (defeated) return false
+        if (cityName in listOf("Могилёв", "Гомель", "Смоленск", "Ленинград")) {
+            worldNotice = "В городе $cityName уровни появятся позже."
+            return false
+        }
+        val playableStreet = when (cityName) {
+            "Минск" -> "Зыбицкая"
+            "Витебск" -> "Суворова"
+            "Москва" -> "Патрики"
+            else -> return false
+        }
+        if (onCounter) {
+            saveCurrentRunIfUnfinished()
+        }
+        onCounter = false
+        openedDrinkCard = null
+        selectedIndex = null
+        worldNotice = null
+        hasNavigatedMap = true
+        currentCityName = cityName
+        currentStreetName = playableStreet
+        mapScreen = ScreenId.CITY_MAP
+        return true
+    }
+
+    fun tapStreet(streetName: String): Boolean {
+        if (defeated) return false
+        val expectedCity = when (streetName) {
+            "Зыбицкая" -> "Минск"
+            "Суворова" -> "Витебск"
+            "Патрики" -> "Москва"
+            else -> return false
+        }
+        if (mapScreen == ScreenId.CITY_MAP && currentCityName != expectedCity) return false
+        if (onCounter) {
+            saveCurrentRunIfUnfinished()
+        }
+        onCounter = false
+        openedDrinkCard = null
+        selectedIndex = null
+        hasNavigatedMap = true
+        currentCityName = expectedCity
+        currentStreetName = streetName
+        mapScreen = ScreenId.STREET_MAP
+        return true
+    }
+
+    fun tapBar(barName: String): Boolean {
+        if (defeated) return false
+        val targetState = barProgressByName[barName] ?: return false
+        if (mapScreen == ScreenId.STREET_MAP && targetState.spec.streetName != currentStreetName) {
+            return false
+        }
+        if (onCounter) {
+            saveCurrentRunIfUnfinished()
+        }
+        onCounter = false
+        openedDrinkCard = null
+        selectedIndex = null
+        hasNavigatedMap = true
+        currentCityName = targetState.spec.cityName
+        currentStreetName = targetState.spec.streetName
+        currentBarName = targetState.spec.barName
+        activeLevelIndex = 0
+        startBottles = barLevels[0].initialBottles.map { it.toList() }
+        bottles = startBottles.map { it.toMutableList() }.toMutableList()
+        history.clear()
+        chargedBottles.clear()
+        moves = 0
+        won = false
+        mapScreen = null
+        return true
+    }
+
     fun closeDrinkSheet() {
         openedDrinkCard = null
     }
@@ -730,6 +1038,13 @@ class LevelSession(
             openedDrinkCard = null
         } else if (onCounter) {
             leaveCounter()
+        } else if (mapScreen == null) {
+            mapScreen = ScreenId.STREET_MAP
+        } else if (mapScreen == ScreenId.STREET_MAP) {
+            mapScreen = ScreenId.CITY_MAP
+        } else if (mapScreen == ScreenId.CITY_MAP) {
+            worldNotice = null
+            mapScreen = ScreenId.WORLD_MAP
         }
     }
 
@@ -814,7 +1129,7 @@ class LevelSession(
         advanceTimeMillis(minutes.toLong() * 60_000L)
     }
 
-    fun applyBarBonus(bonusUnits: Int, targetBarName: String = barName) {
+    fun applyBarBonus(bonusUnits: Int, targetBarName: String = currentBarName) {
         if (defeated || bonusUnits <= 0) return
         val boundedBonus = bonusUnits.coerceIn(1, 3)
         val alreadyAwarded = awardedBarBonuses[targetBarName] ?: 0
@@ -824,7 +1139,9 @@ class LevelSession(
             bonusUnits
         }
         if (delta <= 0) return
-        awardedBarBonuses[targetBarName] = alreadyAwarded + delta
+        val newBonus = alreadyAwarded + delta
+        awardedBarBonuses[targetBarName] = newBonus
+        barProgressByName[targetBarName]?.bonusAwarded = newBonus
         staminaCeiling += delta
         stamina = (stamina + delta).coerceAtMost(staminaCeiling)
     }
@@ -835,11 +1152,16 @@ class LevelSession(
         recoveryRemainderMillis = 0L
         lastClockTimeMillis = null
         defeated = false
-        for (i in unlockedLevels.indices) {
-            unlockedLevels[i] = (i == 0)
-            bestStarsByLevel[i] = 0
+        for (state in barProgressByName.values) {
+            state.reset()
         }
-        unfinishedRuns.clear()
+        currentBarName = barName
+        currentStreetName = barProgressByName[barName]?.spec?.streetName ?: streetName
+        currentCityName = barProgressByName[barName]?.spec?.cityName ?: when (streetName) {
+            "Суворова" -> "Витебск"
+            "Патрики" -> "Москва"
+            else -> "Минск"
+        }
         awardedBarBonuses.clear()
         awardedBarBonuses[barName] = 0
         activeLevelIndex = 0
@@ -850,11 +1172,13 @@ class LevelSession(
         moves = 0
         selectedIndex = null
         openedDrinkCard = null
-        won = !startOnFilmstrip && isSolved()
+        worldNotice = null
+        mapScreen = if (startOnWorldMap || hasNavigatedMap) ScreenId.WORLD_MAP else null
+        won = !startOnFilmstrip && mapScreen == null && isSolved()
         if (won) {
             recordVictoryForActiveLevel()
         }
-        onCounter = !startOnFilmstrip
+        onCounter = !startOnFilmstrip && mapScreen == null
     }
 
     fun undoMove() {
@@ -990,6 +1314,7 @@ class LevelSession(
         val cardDrink = if (onCounter && !defeated) openedDrinkCard else null
         val currentScreen = when {
             defeated -> ScreenId.DEFEAT
+            mapScreen != null -> mapScreen!!
             !onCounter -> ScreenId.LEVEL_FILMSTRIP
             cardDrink != null -> ScreenId.DRINK_CARD
             won -> ScreenId.VICTORY_BANNER
@@ -1014,7 +1339,127 @@ class LevelSession(
         }
         val currentLevelNum = activeLevelIndex + 1
         val currentBestStars = bestStarsByLevel[activeLevelIndex]
-        val currentBarBonus = awardedBarBonuses[barName] ?: 0
+        val currentBarBonus = awardedBarBonuses[currentBarName] ?: 0
+        fun earnedStarsInCity(city: String): Int {
+            return CATALOG_BAR_SPECS
+                .filter { it.cityName == city }
+                .sumOf { spec -> barProgressByName[spec.barName]?.bestStarsByLevel?.sum() ?: 0 }
+        }
+        fun barPointFor(bar: String, rank: Int): StreetBarPointSnapshot {
+            val earned = barProgressByName[bar]?.bestStarsByLevel?.sum() ?: 0
+            return StreetBarPointSnapshot(
+                name = bar,
+                rank = rank,
+                earnedStars = earned
+            )
+        }
+        val worldSnap = WorldMapSnapshot(
+            cities = listOf(
+                WorldCityPointSnapshot(name = "Минск", bright = true, earnedStars = earnedStarsInCity("Минск"), totalStars = 336),
+                WorldCityPointSnapshot(name = "Витебск", bright = true, earnedStars = earnedStarsInCity("Витебск"), totalStars = 168),
+                WorldCityPointSnapshot(name = "Москва", bright = true, earnedStars = earnedStarsInCity("Москва"), totalStars = 120),
+                WorldCityPointSnapshot(name = "Могилёв", bright = false),
+                WorldCityPointSnapshot(name = "Гомель", bright = false),
+                WorldCityPointSnapshot(name = "Смоленск", bright = false),
+                WorldCityPointSnapshot(name = "Ленинград", bright = false)
+            ),
+            noticeText = worldNotice
+        )
+        val citySnap = when (currentCityName) {
+            "Витебск" -> {
+                val playable = CityStreetStrokeSnapshot(
+                    name = "Суворова",
+                    bright = true,
+                    description = "штрих около 1,3 км почти на север в центре Витебска"
+                )
+                CityMapSnapshot(
+                    cityName = "Витебск",
+                    playableStreet = playable,
+                    streets = listOf(
+                        playable,
+                        CityStreetStrokeSnapshot(name = "Ленина", bright = false),
+                        CityStreetStrokeSnapshot(name = "Толстого", bright = false)
+                    )
+                )
+            }
+            "Москва" -> {
+                val playable = CityStreetStrokeSnapshot(
+                    name = "Патрики",
+                    bright = true,
+                    description = "точка в верхней части основного массива"
+                )
+                CityMapSnapshot(
+                    cityName = "Москва",
+                    playableStreet = playable,
+                    streets = listOf(
+                        playable,
+                        CityStreetStrokeSnapshot(name = "Арбат", bright = false),
+                        CityStreetStrokeSnapshot(name = "Тверская", bright = false)
+                    )
+                )
+            }
+            else -> {
+                val playable = CityStreetStrokeSnapshot(
+                    name = "Зыбицкая",
+                    bright = true,
+                    description = "штрих около 400 м на северо-запад, левее и выше середины Минска"
+                )
+                CityMapSnapshot(
+                    cityName = "Минск",
+                    playableStreet = playable,
+                    streets = listOf(
+                        playable,
+                        CityStreetStrokeSnapshot(name = "Немига", bright = false),
+                        CityStreetStrokeSnapshot(name = "Интернациональная", bright = false)
+                    )
+                )
+            }
+        }
+        val streetSnap = when (currentStreetName) {
+            "Суворова" -> StreetMapSnapshot(
+                cityName = "Витебск",
+                streetName = "Суворова",
+                walkingOrderDescription = "с севера на юг",
+                bars = listOf(
+                    barPointFor("Золотой лев", 1),
+                    barPointFor("Марвин", 2),
+                    barPointFor("«Damask» Kafe-Bar", 3),
+                    barPointFor("Аптека бар", 4)
+                )
+            )
+            "Патрики" -> StreetMapSnapshot(
+                cityName = "Москва",
+                streetName = "Патрики",
+                walkingOrderDescription = "по контуру пруда",
+                bars = listOf(
+                    barPointFor("Киану", 1),
+                    barPointFor("Bro&n", 2),
+                    barPointFor("Зойка", 4)
+                ),
+                pondWaterSize = "130×130 м",
+                surroundingStreets = listOf(
+                    "Малая Бронная",
+                    "Большой Патриарший",
+                    "Малый Патриарший",
+                    "Ермолаевский"
+                )
+            )
+            else -> StreetMapSnapshot(
+                cityName = "Минск",
+                streetName = "Зыбицкая",
+                walkingOrderDescription = "с запада на восток",
+                bars = listOf(
+                    barPointFor("Under", 1),
+                    barPointFor("Койот", 1),
+                    barPointFor("Zodiac", 2),
+                    barPointFor("Рядом", 2),
+                    barPointFor("Белый Налив", 3),
+                    barPointFor("Горький", 3),
+                    barPointFor("На дне", 4),
+                    barPointFor("Матрешка", 4)
+                )
+            )
+        }
         return CounterSnapshot(
             capacity = capacity,
             glass = glass,
@@ -1027,14 +1472,20 @@ class LevelSession(
             stamina = stamina,
             staminaCeiling = staminaCeiling,
             recoveryProgressMillis = recoveryRemainderMillis,
-            streetName = streetName,
-            barName = barName,
+            cityName = currentCityName,
+            streetName = currentStreetName,
+            barName = currentBarName,
             levelNumber = currentLevelNum,
-            pathText = if (currentScreen == ScreenId.LEVEL_FILMSTRIP) {
-                "$streetName · $barName"
-            } else {
-                "$streetName · $barName · Уровень $currentLevelNum"
+            pathText = when (currentScreen) {
+                ScreenId.WORLD_MAP -> "Мир"
+                ScreenId.CITY_MAP -> currentCityName
+                ScreenId.STREET_MAP -> "$currentCityName · $currentStreetName"
+                ScreenId.LEVEL_FILMSTRIP -> "$currentStreetName · $currentBarName"
+                else -> "$currentStreetName · $currentBarName · Уровень $currentLevelNum"
             },
+            worldMap = worldSnap,
+            cityMap = citySnap,
+            streetMap = streetSnap,
             restartButton = if (defeated || !onCounter || won || cardDrink != null) {
                 null
             } else {
