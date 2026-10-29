@@ -57,7 +57,7 @@ class SharedPreferencesGameStateStore(
 class MainActivity : Activity() {
 
     private lateinit var stateStore: GameStateStore
-    private lateinit var session: LevelSession
+    private lateinit var game: GameRunModule
     private lateinit var backgroundBackdropView: BarBackdropView
     private lateinit var mapScreen: LinearLayout
     private lateinit var mapBackButtonView: TextView
@@ -98,8 +98,8 @@ class MainActivity : Activity() {
     private var animationPhaseRad: Float = 0f
     private val ambianceRunnable = object : Runnable {
         override fun run() {
-            session.onClockTimeMillis(System.currentTimeMillis())
-            val snap = session.snapshot()
+            game.onClockTimeMillis(System.currentTimeMillis())
+            val snap = game.snapshot()
             staminaView.text = snap.enduranceText
             stateLabelView.text = snap.stateLabel
             mapStaminaView.text = snap.enduranceText
@@ -111,11 +111,124 @@ class MainActivity : Activity() {
         }
     }
 
+    private data class TopBarViews(
+        val container: LinearLayout,
+        val backButton: TextView,
+        val pathView: TextView,
+        val staminaView: TextView,
+        val stateLabelView: TextView,
+        val neonSignView: TextView? = null
+    )
+
+    private fun buildTopBar(includeNeonSign: Boolean = false): TopBarViews {
+        val topBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val backButton = TextView(this).apply {
+            text = "Назад"
+            setTextColor(Color.parseColor("#FF5AD4"))
+            textSize = 13f
+            typeface = Typeface.MONOSPACE
+            val padH = dp(8)
+            val padV = dp(6)
+            setPadding(padH, padV, padH, padV)
+            background = strokeBox(Color.parseColor("#FF5AD4"))
+            setOnClickListener {
+                game.tapBack()
+                render()
+            }
+        }
+        val pathView = TextView(this).apply {
+            setTextColor(Color.parseColor(if (includeNeonSign) "#F6F1E8" else "#FF5AD4"))
+            textSize = if (includeNeonSign) 12f else 15f
+            typeface = Typeface.MONOSPACE
+        }
+        val signView: TextView? = if (includeNeonSign) {
+            TextView(this).apply {
+                text = game.barName.uppercase()
+                setTextColor(Color.parseColor("#FF5AD4"))
+                textSize = 15f
+                typeface = Typeface.MONOSPACE
+            }
+        } else {
+            null
+        }
+        val centerView: View = if (signView != null) {
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(signView)
+                addView(pathView)
+            }
+        } else {
+            pathView
+        }
+        val enduranceGroup = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL or Gravity.END
+        }
+        val staminaTextView = TextView(this).apply {
+            setTextColor(Color.parseColor("#FFE56A"))
+            textSize = 20f
+            typeface = Typeface.MONOSPACE
+        }
+        val stateTextView = TextView(this).apply {
+            setTextColor(Color.parseColor("#79F6FF"))
+            textSize = 16f
+            typeface = Typeface.MONOSPACE
+            val padH = dp(8)
+            val padV = dp(2)
+            setPadding(padH, padV, padH, padV)
+        }
+        enduranceGroup.addView(staminaTextView)
+        enduranceGroup.addView(
+            stateTextView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                leftMargin = dp(8)
+            }
+        )
+        topBar.addView(
+            backButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                rightMargin = dp(8)
+            }
+        )
+        topBar.addView(
+            centerView,
+            LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f
+            )
+        )
+        topBar.addView(
+            enduranceGroup,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        return TopBarViews(
+            container = topBar,
+            backButton = backButton,
+            pathView = pathView,
+            staminaView = staminaTextView,
+            stateLabelView = stateTextView,
+            neonSignView = signView
+        )
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         stateStore = SharedPreferencesGameStateStore(applicationContext)
-        session = LevelSession.coldStartFrom(
+        game = GameRunModule.coldStartFrom(
             store = stateStore,
             atClockMillis = System.currentTimeMillis()
         )
@@ -141,82 +254,13 @@ class MainActivity : Activity() {
             visibility = View.GONE
         }
 
-        val mapTopBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        mapBackButtonView = TextView(this).apply {
-            text = "Назад"
-            setTextColor(Color.parseColor("#FF5AD4"))
-            textSize = 13f
-            typeface = Typeface.MONOSPACE
-            val padH = dp(8)
-            val padV = dp(6)
-            setPadding(padH, padV, padH, padV)
-            background = strokeBox(Color.parseColor("#FF5AD4"))
-            setOnClickListener {
-                session.tapBack()
-                render()
-            }
-        }
-        mapPathView = TextView(this).apply {
-            setTextColor(Color.parseColor("#FF5AD4"))
-            textSize = 15f
-            typeface = Typeface.MONOSPACE
-        }
-        val mapEnduranceGroup = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL or Gravity.END
-        }
-        mapStaminaView = TextView(this).apply {
-            setTextColor(Color.parseColor("#FFE56A"))
-            textSize = 20f
-            typeface = Typeface.MONOSPACE
-        }
-        mapStateLabelView = TextView(this).apply {
-            setTextColor(Color.parseColor("#79F6FF"))
-            textSize = 16f
-            typeface = Typeface.MONOSPACE
-            val padH = dp(8)
-            val padV = dp(2)
-            setPadding(padH, padV, padH, padV)
-        }
-        mapEnduranceGroup.addView(mapStaminaView)
-        mapEnduranceGroup.addView(
-            mapStateLabelView,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                leftMargin = dp(8)
-            }
-        )
-        mapTopBar.addView(
-            mapBackButtonView,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                rightMargin = dp(8)
-            }
-        )
-        mapTopBar.addView(
-            mapPathView,
-            LinearLayout.LayoutParams(
-                0,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                1f
-            )
-        )
-        mapTopBar.addView(
-            mapEnduranceGroup,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
+        val mapTopBar = buildTopBar(includeNeonSign = false)
+        mapBackButtonView = mapTopBar.backButton
+        mapPathView = mapTopBar.pathView
+        mapStaminaView = mapTopBar.staminaView
+        mapStateLabelView = mapTopBar.stateLabelView
         mapScreen.addView(
-            mapTopBar,
+            mapTopBar.container,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -226,15 +270,15 @@ class MainActivity : Activity() {
         mapCanvasView = PixelMapCanvasView(
             context = this,
             onCityTapped = { cityName ->
-                session.tapCity(cityName)
+                game.tapCity(cityName)
                 render()
             },
             onStreetTapped = { streetName ->
-                session.tapStreet(streetName)
+                game.tapStreet(streetName)
                 render()
             },
             onBarTapped = { barName ->
-                session.tapBar(barName)
+                game.tapBar(barName)
                 render()
             }
         )
@@ -274,82 +318,13 @@ class MainActivity : Activity() {
             visibility = View.GONE
         }
 
-        val filmstripTopBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        filmstripBackButtonView = TextView(this).apply {
-            text = "Назад"
-            setTextColor(Color.parseColor("#FF5AD4"))
-            textSize = 13f
-            typeface = Typeface.MONOSPACE
-            val padH = dp(8)
-            val padV = dp(6)
-            setPadding(padH, padV, padH, padV)
-            background = strokeBox(Color.parseColor("#FF5AD4"))
-            setOnClickListener {
-                session.tapBack()
-                render()
-            }
-        }
-        filmstripPathView = TextView(this).apply {
-            setTextColor(Color.parseColor("#FF5AD4"))
-            textSize = 15f
-            typeface = Typeface.MONOSPACE
-        }
-        val filmstripEnduranceGroup = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL or Gravity.END
-        }
-        filmstripStaminaView = TextView(this).apply {
-            setTextColor(Color.parseColor("#FFE56A"))
-            textSize = 20f
-            typeface = Typeface.MONOSPACE
-        }
-        filmstripStateLabelView = TextView(this).apply {
-            setTextColor(Color.parseColor("#79F6FF"))
-            textSize = 16f
-            typeface = Typeface.MONOSPACE
-            val padH = dp(8)
-            val padV = dp(2)
-            setPadding(padH, padV, padH, padV)
-        }
-        filmstripEnduranceGroup.addView(filmstripStaminaView)
-        filmstripEnduranceGroup.addView(
-            filmstripStateLabelView,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                leftMargin = dp(8)
-            }
-        )
-        filmstripTopBar.addView(
-            filmstripBackButtonView,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                rightMargin = dp(8)
-            }
-        )
-        filmstripTopBar.addView(
-            filmstripPathView,
-            LinearLayout.LayoutParams(
-                0,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                1f
-            )
-        )
-        filmstripTopBar.addView(
-            filmstripEnduranceGroup,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
+        val filmstripTopBar = buildTopBar(includeNeonSign = false)
+        filmstripBackButtonView = filmstripTopBar.backButton
+        filmstripPathView = filmstripTopBar.pathView
+        filmstripStaminaView = filmstripTopBar.staminaView
+        filmstripStateLabelView = filmstripTopBar.stateLabelView
         filmstripScreen.addView(
-            filmstripTopBar,
+            filmstripTopBar.container,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -389,94 +364,14 @@ class MainActivity : Activity() {
         }
 
         // Верхняя полоса прилавка: кнопка «Назад», путь (улица · бар · уровень), запас/потолок и подпись состояния
-        val topBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        counterBackButtonView = TextView(this).apply {
-            text = "Назад"
-            setTextColor(Color.parseColor("#FF5AD4"))
-            textSize = 13f
-            typeface = Typeface.MONOSPACE
-            val padH = dp(8)
-            val padV = dp(6)
-            setPadding(padH, padV, padH, padV)
-            background = strokeBox(Color.parseColor("#FF5AD4"))
-            setOnClickListener {
-                session.tapBack()
-                render()
-            }
-        }
-        val pathAndSignGroup = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        neonSignView = TextView(this).apply {
-            text = session.barName.uppercase()
-            setTextColor(Color.parseColor("#FF5AD4"))
-            textSize = 15f
-            typeface = Typeface.MONOSPACE
-        }
-        counterPathView = TextView(this).apply {
-            setTextColor(Color.parseColor("#F6F1E8"))
-            textSize = 12f
-            typeface = Typeface.MONOSPACE
-        }
-        pathAndSignGroup.addView(neonSignView)
-        pathAndSignGroup.addView(counterPathView)
-
-        val enduranceGroup = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL or Gravity.END
-        }
-        staminaView = TextView(this).apply {
-            setTextColor(Color.parseColor("#FFE56A"))
-            textSize = 20f
-            typeface = Typeface.MONOSPACE
-        }
-        stateLabelView = TextView(this).apply {
-            setTextColor(Color.parseColor("#79F6FF"))
-            textSize = 16f
-            typeface = Typeface.MONOSPACE
-            val padH = dp(8)
-            val padV = dp(2)
-            setPadding(padH, padV, padH, padV)
-        }
-        enduranceGroup.addView(staminaView)
-        enduranceGroup.addView(
-            stateLabelView,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                leftMargin = dp(8)
-            }
-        )
-        topBar.addView(
-            counterBackButtonView,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                rightMargin = dp(8)
-            }
-        )
-        topBar.addView(
-            pathAndSignGroup,
-            LinearLayout.LayoutParams(
-                0,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                1f
-            )
-        )
-        topBar.addView(
-            enduranceGroup,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
+        val counterTopBar = buildTopBar(includeNeonSign = true)
+        counterBackButtonView = counterTopBar.backButton
+        neonSignView = counterTopBar.neonSignView!!
+        counterPathView = counterTopBar.pathView
+        staminaView = counterTopBar.staminaView
+        stateLabelView = counterTopBar.stateLabelView
         counterScreen.addView(
-            topBar,
+            counterTopBar.container,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -509,7 +404,7 @@ class MainActivity : Activity() {
         }
         bannerToLevelsButtonView = createActionButton().apply {
             setOnClickListener {
-                session.tapToLevels()
+                game.tapToLevels()
                 render()
             }
         }
@@ -562,13 +457,13 @@ class MainActivity : Activity() {
 
         restartButtonView = createActionButton().apply {
             setOnClickListener {
-                session.restartRun()
+                game.restartRun()
                 render()
             }
         }
         undoButtonView = createActionButton().apply {
             setOnClickListener {
-                session.undoMove()
+                game.undoMove()
                 render()
             }
         }
@@ -702,7 +597,7 @@ class MainActivity : Activity() {
             val vPad = dp(12)
             setPadding(hPad, vPad, hPad, vPad)
             setOnClickListener {
-                session.startNewGame()
+                game.startNewGame()
                 render()
             }
         }
@@ -754,7 +649,7 @@ class MainActivity : Activity() {
     }
 
     private fun handleSystemBack(): Boolean {
-        val snap = session.snapshot()
+        val snap = game.snapshot()
         return when (snap.screen) {
             ScreenId.DRINK_CARD,
             ScreenId.COUNTER,
@@ -763,12 +658,12 @@ class MainActivity : Activity() {
             ScreenId.STREET_MAP,
             ScreenId.CITY_MAP,
             ScreenId.DEFEAT -> {
-                session.systemBack()
+                game.systemBack()
                 render()
                 true
             }
             ScreenId.WORLD_MAP -> {
-                session.systemBack()
+                game.systemBack()
                 false
             }
         }
@@ -776,7 +671,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        session.resumeApp(System.currentTimeMillis())
+        game.resumeApp(System.currentTimeMillis())
         render()
         uiHandler.removeCallbacks(ambianceRunnable)
         uiHandler.post(ambianceRunnable)
@@ -784,12 +679,12 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         uiHandler.removeCallbacks(ambianceRunnable)
-        session.minimizeApp(System.currentTimeMillis())
+        game.minimizeApp(System.currentTimeMillis())
         super.onPause()
     }
 
     override fun onStop() {
-        session.closeApp(System.currentTimeMillis())
+        game.closeApp(System.currentTimeMillis())
         super.onStop()
     }
 
@@ -805,24 +700,20 @@ class MainActivity : Activity() {
         animationPhaseRad += 0.12f
         val swayLevel = snap.backgroundSwayLevel
         val pulseLevel = snap.neonPulseLevel
-        // Только фоновый рисунок и декоративная вывеска пульсируют/качаются; клетки с бутылками и порциями неподвижны
+        // Только фоновый рисунок и декоративная вывеска пульсируют/качаются; карта, числа, кнопки, бутылки и порции неподвижны
         val swayAmplitudePx = dp(swayLevel * 2).toFloat()
         val dx = sin(animationPhaseRad) * swayAmplitudePx
         val dy = sin(animationPhaseRad * 0.7f) * (swayAmplitudePx * 0.5f)
         backgroundBackdropView.translationX = dx
         backgroundBackdropView.translationY = dy
-        mapCanvasView.translationX = dx * 0.5f
-        mapCanvasView.translationY = dy * 0.5f
         val pulseDelta = 0.08f * pulseLevel
         val pulseAlpha = (1f - pulseDelta * (0.5f + 0.5f * sin(animationPhaseRad * 1.4f))).coerceIn(0.35f, 1f)
         neonSignView.alpha = pulseAlpha
-        mapPathView.alpha = pulseAlpha
-        filmstripPathView.alpha = pulseAlpha
     }
 
     private fun render() {
-        session.onClockTimeMillis(System.currentTimeMillis())
-        val snap = session.snapshot()
+        game.onClockTimeMillis(System.currentTimeMillis())
+        val snap = game.snapshot()
         staminaView.text = snap.enduranceText
         stateLabelView.text = snap.stateLabel
         mapStaminaView.text = snap.enduranceText
@@ -900,7 +791,7 @@ class MainActivity : Activity() {
                     bottle = bottle
                 ).apply {
                     setOnClickListener {
-                        session.tapBottleGlass(currentIndex)
+                        game.tapBottleGlass(currentIndex)
                         render()
                     }
                 }
@@ -931,7 +822,7 @@ class MainActivity : Activity() {
                         background = strokeBox(Color.parseColor("#FFE56A"))
                         isClickable = true
                         setOnClickListener {
-                            session.tapBottleName(currentIndex)
+                            game.tapBottleName(currentIndex)
                             render()
                         }
                     } else {
@@ -959,10 +850,11 @@ class MainActivity : Activity() {
                 rowLayout.addView(cellLayout, cellParams)
             }
 
+            // Фиксированная высота ряда клеток, чтобы клетка в 1 ряду и клетка в 2 рядах имели одинаковую высоту,
+            // а стекло вместимости 6 было выше и шире стекла вместимости 3.
             val rowParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
+                dp(210)
             ).apply {
                 topMargin = dp(4)
                 bottomMargin = dp(4)
@@ -1052,7 +944,7 @@ class MainActivity : Activity() {
                 isClickable = card.unlocked
                 if (card.unlocked) {
                     setOnClickListener {
-                        if (session.tapLevelCard(card.levelNumber)) {
+                        if (game.tapLevelCard(card.levelNumber)) {
                             render()
                         }
                     }
@@ -1119,7 +1011,7 @@ class MainActivity : Activity() {
             setPadding(padH, padV, padH, padV)
             background = strokeBox(Color.parseColor("#FF5AD4"))
             setOnClickListener {
-                session.tapBack()
+                game.tapBack()
                 render()
             }
         }
@@ -1515,6 +1407,7 @@ private class PixelMapCanvasView(
 
     private fun drawCityMap(canvas: Canvas, snap: CounterSnapshot) {
         val density = resources.displayMetrics.density
+        val dimmedStreets = snap.cityMap?.streets?.filter { it.dimmed }.orEmpty()
         when (snap.cityName) {
             "Витебск" -> {
                 val vbW = 100f
@@ -1525,22 +1418,30 @@ private class PixelMapCanvasView(
                 )
                 drawPolygon(canvas, vbW, vbH, shape, dimMarkFillPaint, dimStrokePaint)
 
-                val (dx1, dy1) = toScreen(vbW, vbH, 22f, 62f)
-                val (dx2, dy2) = toScreen(vbW, vbH, 40f, 78f)
-                canvas.drawLine(dx1, dy1, dx2, dy2, dimStrokePaint)
-                textPaint.color = Color.parseColor("#6D6878")
-                textPaint.textSize = 13f * density
-                textPaint.textAlign = Paint.Align.LEFT
-                val (dlx, dly) = toScreen(vbW, vbH, 18f, 84f)
-                canvas.drawText("Ленина", dlx, dly, textPaint)
+                val dimmedGeom = listOf(
+                    Triple(22f to 62f, 40f to 78f, 18f to 84f),
+                    Triple(36f to 48f, 52f to 52f, 26f to 45f)
+                )
+                dimmedStreets.forEachIndexed { idx, street ->
+                    val (start, end, labelPos) = dimmedGeom.getOrElse(idx) { dimmedGeom.last() }
+                    val (dx1, dy1) = toScreen(vbW, vbH, start.first, start.second)
+                    val (dx2, dy2) = toScreen(vbW, vbH, end.first, end.second)
+                    canvas.drawLine(dx1, dy1, dx2, dy2, dimStrokePaint)
+                    textPaint.color = Color.parseColor("#6D6878")
+                    textPaint.textSize = 12f * density
+                    textPaint.textAlign = Paint.Align.LEFT
+                    val (dlx, dly) = toScreen(vbW, vbH, labelPos.first, labelPos.second)
+                    canvas.drawText(street.name, dlx, dly, textPaint)
+                }
 
                 val (sx1, sy1) = toScreen(vbW, vbH, 54f, 28f)
                 val (sx2, sy2) = toScreen(vbW, vbH, 54f, 70f)
                 canvas.drawLine(sx1, sy1, sx2, sy2, brightStrokePaint)
                 textPaint.color = Color.parseColor("#79F6FF")
                 textPaint.textSize = 15f * density
+                textPaint.textAlign = Paint.Align.LEFT
                 val (slx, sly) = toScreen(vbW, vbH, 58f, 46f)
-                canvas.drawText("Суворова", slx, sly, textPaint)
+                canvas.drawText(snap.cityMap?.playableStreet?.name ?: "Суворова", slx, sly, textPaint)
 
                 val midX = (sx1 + sx2) / 2f
                 val midY = (sy1 + sy2) / 2f
@@ -1564,14 +1465,21 @@ private class PixelMapCanvasView(
                 drawPolygon(canvas, vbW, vbH, shape, dimMarkFillPaint, dimStrokePaint)
                 drawPolygon(canvas, vbW, vbH, zelenograd, dimMarkFillPaint, dimStrokePaint)
 
-                val (dx1, dy1) = toScreen(vbW, vbH, 8f, 48f)
-                val (dx2, dy2) = toScreen(vbW, vbH, 24f, 58f)
-                canvas.drawLine(dx1, dy1, dx2, dy2, dimStrokePaint)
-                textPaint.color = Color.parseColor("#6D6878")
-                textPaint.textSize = 13f * density
-                textPaint.textAlign = Paint.Align.LEFT
-                val (dlx, dly) = toScreen(vbW, vbH, 4f, 46f)
-                canvas.drawText("Арбат", dlx, dly, textPaint)
+                val dimmedGeom = listOf(
+                    Triple(14f to 50f, 30f to 58f, 10f to 46f),
+                    Triple(44f to 24f, 58f to 38f, 36f to 20f)
+                )
+                dimmedStreets.forEachIndexed { idx, street ->
+                    val (start, end, labelPos) = dimmedGeom.getOrElse(idx) { dimmedGeom.last() }
+                    val (dx1, dy1) = toScreen(vbW, vbH, start.first, start.second)
+                    val (dx2, dy2) = toScreen(vbW, vbH, end.first, end.second)
+                    canvas.drawLine(dx1, dy1, dx2, dy2, dimStrokePaint)
+                    textPaint.color = Color.parseColor("#6D6878")
+                    textPaint.textSize = 12f * density
+                    textPaint.textAlign = Paint.Align.LEFT
+                    val (dlx, dly) = toScreen(vbW, vbH, labelPos.first, labelPos.second)
+                    canvas.drawText(street.name, dlx, dly, textPaint)
+                }
 
                 val (px, py) = toScreen(vbW, vbH, 68f, 26f)
                 canvas.drawCircle(px, py, 10f * density, brightMarkFillPaint)
@@ -1579,7 +1487,7 @@ private class PixelMapCanvasView(
                 textPaint.color = Color.parseColor("#79F6FF")
                 textPaint.textSize = 15f * density
                 textPaint.textAlign = Paint.Align.CENTER
-                canvas.drawText("Патрики", px, py - 14f * density, textPaint)
+                canvas.drawText(snap.cityMap?.playableStreet?.name ?: "Патрики", px, py - 14f * density, textPaint)
 
                 hitTargets.add(
                     MapHitTarget(
@@ -1599,22 +1507,30 @@ private class PixelMapCanvasView(
                 )
                 drawPolygon(canvas, vbW, vbH, shape, dimMarkFillPaint, dimStrokePaint)
 
-                val (dx1, dy1) = toScreen(vbW, vbH, 18f, 40f)
-                val (dx2, dy2) = toScreen(vbW, vbH, 28f, 46f)
-                canvas.drawLine(dx1, dy1, dx2, dy2, dimStrokePaint)
-                textPaint.color = Color.parseColor("#6D6878")
-                textPaint.textSize = 13f * density
-                textPaint.textAlign = Paint.Align.LEFT
-                val (dlx, dly) = toScreen(vbW, vbH, 10f, 40f)
-                canvas.drawText("Немига", dlx, dly, textPaint)
+                val dimmedGeom = listOf(
+                    Triple(18f to 40f, 28f to 46f, 10f to 40f),
+                    Triple(30f to 48f, 46f to 44f, 28f to 54f)
+                )
+                dimmedStreets.forEachIndexed { idx, street ->
+                    val (start, end, labelPos) = dimmedGeom.getOrElse(idx) { dimmedGeom.last() }
+                    val (dx1, dy1) = toScreen(vbW, vbH, start.first, start.second)
+                    val (dx2, dy2) = toScreen(vbW, vbH, end.first, end.second)
+                    canvas.drawLine(dx1, dy1, dx2, dy2, dimStrokePaint)
+                    textPaint.color = Color.parseColor("#6D6878")
+                    textPaint.textSize = 12f * density
+                    textPaint.textAlign = Paint.Align.LEFT
+                    val (dlx, dly) = toScreen(vbW, vbH, labelPos.first, labelPos.second)
+                    canvas.drawText(street.name, dlx, dly, textPaint)
+                }
 
                 val (sx1, sy1) = toScreen(vbW, vbH, 46f, 30f)
                 val (sx2, sy2) = toScreen(vbW, vbH, 32f, 22f)
                 canvas.drawLine(sx1, sy1, sx2, sy2, brightStrokePaint)
                 textPaint.color = Color.parseColor("#79F6FF")
                 textPaint.textSize = 15f * density
+                textPaint.textAlign = Paint.Align.LEFT
                 val (slx, sly) = toScreen(vbW, vbH, 24f, 18f)
-                canvas.drawText("Зыбицкая", slx, sly, textPaint)
+                canvas.drawText(snap.cityMap?.playableStreet?.name ?: "Зыбицкая", slx, sly, textPaint)
 
                 val midX = (sx1 + sx2) / 2f
                 val midY = (sy1 + sy2) / 2f
@@ -1671,6 +1587,8 @@ private class PixelMapCanvasView(
             "Патрики" -> {
                 val vbW = 100f
                 val vbH = 100f
+                // Четыре улицы вокруг пруда (~130×130 м), контур повёрнут примерно на 40° от меридиана:
+                // 0: Малая Бронная, 1: Большой Патриарший, 2: Малый Патриарший, 3: Ермолаевский
                 val ring = listOf(42f to 16f, 84f to 38f, 58f to 86f, 16f to 58f)
                 val pond = listOf(50f to 34f, 64f to 48f, 50f to 64f, 36f to 50f)
                 for (i in ring.indices) {
@@ -1682,7 +1600,24 @@ private class PixelMapCanvasView(
                 }
                 drawPolygon(canvas, vbW, vbH, pond, waterFillPaint, waterStrokePaint)
 
-                val spots = listOf(0.35f to 0, 0.35f to 1, 0.7f to 1)
+                val surrounding = snap.streetMap?.surroundingStreets.orEmpty()
+                val streetLabelPositions = listOf(
+                    Triple(66f, 22f, Paint.Align.CENTER), // Малая Бронная (северо-восток)
+                    Triple(78f, 70f, Paint.Align.LEFT),   // Большой Патриарший (юго-восток)
+                    Triple(26f, 82f, Paint.Align.CENTER), // Малый Патриарший (юго-запад)
+                    Triple(20f, 30f, Paint.Align.RIGHT)   // Ермолаевский (северо-запад)
+                )
+                textPaint.color = Color.parseColor("#6D6878")
+                textPaint.textSize = 10.5f * density
+                surrounding.forEachIndexed { idx, sName ->
+                    val (lx, ly, align) = streetLabelPositions.getOrElse(idx) { streetLabelPositions.last() }
+                    val (sx, sy) = toScreen(vbW, vbH, lx, ly)
+                    textPaint.textAlign = align
+                    canvas.drawText(sName, sx, sy, textPaint)
+                }
+
+                // Киану на Малой Бронной (сторона 0), Bro&n и Зойка на Большом Патриаршем (сторона 1)
+                val spots = listOf(0.42f to 0, 0.32f to 1, 0.72f to 1)
                 bars.forEachIndexed { idx, bar ->
                     val (t, side) = spots.getOrElse(idx) { 0.5f to 0 }
                     val (vx, vy) = along(ring[side], ring[(side + 1) % ring.size], t)
@@ -1706,32 +1641,33 @@ private class PixelMapCanvasView(
             else -> {
                 val vbW = 100f
                 val vbH = 84f
-                val nw = 14f to 22f
-                val se = 88f to 70f
+                val nw = 8f to 20f
+                val se = 94f to 74f
                 val (x1, y1) = toScreen(vbW, vbH, nw.first, nw.second)
                 val (x2, y2) = toScreen(vbW, vbH, se.first, se.second)
                 canvas.drawLine(x1, y1, x2, y2, dimStrokePaint)
                 textPaint.color = Color.parseColor("#6D6878")
                 textPaint.textSize = 12f * density
                 textPaint.textAlign = Paint.Align.LEFT
-                val (nx, ny) = toScreen(vbW, vbH, 6f, 14f)
-                canvas.drawText("северо-запад", nx, ny, textPaint)
+                val (nx, ny) = toScreen(vbW, vbH, 6f, 12f)
+                canvas.drawText("северо-запад (западный конец)", nx, ny, textPaint)
 
+                // Все восемь баров сгруппированы у западного конца штриха и идут с запада на восток
                 bars.forEachIndexed { idx, bar ->
-                    val (vx, vy) = along(nw, se, 0.12f + idx * 0.09f)
+                    val (vx, vy) = along(nw, se, 0.04f + idx * 0.065f)
                     val (bx, by) = toScreen(vbW, vbH, vx, vy)
-                    canvas.drawCircle(bx, by, 7.5f * density, brightMarkFillPaint)
-                    canvas.drawCircle(bx, by, 7.5f * density, brightStrokePaint)
+                    canvas.drawCircle(bx, by, 6.5f * density, brightMarkFillPaint)
+                    canvas.drawCircle(bx, by, 6.5f * density, brightStrokePaint)
                     textPaint.color = Color.parseColor("#79F6FF")
-                    textPaint.textSize = 12f * density
+                    textPaint.textSize = 11f * density
                     textPaint.textAlign = Paint.Align.CENTER
-                    val labelOffsetY = if (idx % 2 == 0) -12f * density else 20f * density
+                    val labelOffsetY = if (idx % 2 == 0) -12f * density else 19f * density
                     canvas.drawText(bar.name, bx, by + labelOffsetY, textPaint)
                     hitTargets.add(
                         MapHitTarget(
                             x = bx,
                             y = by,
-                            radius = 24f * density,
+                            radius = 18f * density,
                             action = { onBarTapped(bar.name) }
                         )
                     )
@@ -1781,6 +1717,11 @@ private class BottleView(
         style = Paint.Style.STROKE
         strokeWidth = 3f
     }
+    private val rubyEdgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 2f
+        color = Color.parseColor("#A8243C")
+    }
     private val emptySlotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 2.5f
@@ -1793,6 +1734,7 @@ private class BottleView(
         super.onDraw(canvas)
         if (width <= 0 || height <= 0) return
 
+        val density = resources.displayMetrics.density
         val strokeInset = borderPaint.strokeWidth / 2f
         val availWidth = (width - strokeInset * 2f).coerceAtLeast(1f)
         val availHeight = (height - strokeInset * 2f).coerceAtLeast(1f)
@@ -1808,9 +1750,9 @@ private class BottleView(
         val totalBottom = height - strokeInset
         val totalTop = (totalBottom - glassTotalHeight).coerceAtLeast(strokeInset)
 
-        // Общее горлышко сверху внутри габарита стекла
-        val neckHeight = (glassTotalHeight * 0.12f).coerceIn(8f, 22f)
-        val neckWidth = (glassTotalWidth * 0.44f).coerceAtLeast(12f)
+        // Общее горлышко единого размера для всех вместимостей сверху внутри габарита стекла
+        val neckHeight = (14f * density).coerceAtMost(glassTotalHeight * 0.22f)
+        val neckWidth = (24f * density).coerceAtMost(glassTotalWidth * 0.65f)
         val neckLeft = (width - neckWidth) / 2f
         val neckRight = neckLeft + neckWidth
         val neckTop = totalTop
@@ -1858,6 +1800,9 @@ private class BottleView(
                 slotGlowPaint.color = color
                 slotGlowPaint.alpha = 110
                 canvas.drawRect(rect, slotGlowPaint)
+                if (drink == Drink.GUINNESS_DRAUGHT) {
+                    canvas.drawRect(rect, rubyEdgePaint)
+                }
             } else {
                 canvas.drawRect(rect, emptySlotPaint)
             }
@@ -1876,6 +1821,11 @@ private class PixelBottleIllustrationView(
     }
     private val fillPaint = Paint().apply {
         style = Paint.Style.FILL
+    }
+    private val rubyEdgePaint = Paint().apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 2.5f
+        color = Color.parseColor("#A8243C")
     }
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
@@ -1933,6 +1883,16 @@ private class PixelBottleIllustrationView(
                     canvas.drawRect(cellRect, rimPaint)
                 } else if (ch == '1') {
                     canvas.drawRect(cellRect, fillPaint)
+                    if (illustration.subtleRubyEdge) {
+                        val touchesRim =
+                            (c > 0 && rowStr[c - 1] == '2') ||
+                                (c + 1 < rowStr.length && rowStr[c + 1] == '2') ||
+                                (r > 0 && mask[r - 1].getOrNull(c) == '2') ||
+                                (r + 1 < rows && mask[r + 1].getOrNull(c) == '2')
+                        if (touchesRim) {
+                            canvas.drawRect(cellRect, rubyEdgePaint)
+                        }
+                    }
                 }
             }
         }

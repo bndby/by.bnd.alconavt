@@ -496,16 +496,27 @@ private data class CatalogBarSpec(
     val rank: Int
 ) {
     val levelCount: Int get() = rank * 4 + 4
+
+    companion object {
+        val ALL: List<CatalogBarSpec> = LevelCatalog.bars.map { bar ->
+            CatalogBarSpec(
+                cityName = bar.cityName,
+                streetName = bar.streetName,
+                barName = bar.barName,
+                rank = bar.rank
+            )
+        }
+
+        val CITY_TO_PLAYABLE_STREET: Map<String, String> = ALL.associate { it.cityName to it.streetName }
+        val STREET_TO_CITY: Map<String, String> = ALL.associate { it.streetName to it.cityName }
+        val DIMMED_WORLD_CITIES: Set<String> = setOf("Могилёв", "Гомель", "Смоленск", "Ленинград")
+
+        fun cityForStreet(streetName: String): String =
+            STREET_TO_CITY[streetName] ?: "Минск"
+    }
 }
 
-private val CATALOG_BAR_SPECS: List<CatalogBarSpec> = LevelCatalog.bars.map { bar ->
-    CatalogBarSpec(
-        cityName = bar.cityName,
-        streetName = bar.streetName,
-        barName = bar.barName,
-        rank = bar.rank
-    )
-}
+private val CATALOG_BAR_SPECS: List<CatalogBarSpec> = CatalogBarSpec.ALL
 
 data class PersistedRunState(
     val bottles: List<List<Drink>>,
@@ -538,10 +549,7 @@ data class PersistedGameState(
     val awardedBarBonuses: Map<String, Int>,
     val closedOnActiveRunDrinkSheet: Boolean = false,
     val activeRunBarName: String? = null,
-    val activeRunLevelNumber: Int? = null,
-    val storedOpenedSheets: List<Drink> = emptyList(),
-    val storedViewedCards: List<Drink> = emptyList(),
-    val storedSelectedBottle: Int? = null
+    val activeRunLevelNumber: Int? = null
 ) {
     fun serialize(): String = buildString {
         appendLine("v=1")
@@ -730,20 +738,13 @@ class InMemoryGameStateStore : GameStateStore {
     }
 }
 
-private data class SavedRunState(
-    val bottles: List<List<Drink>>,
-    val history: List<List<List<Drink>>>,
-    val chargedBottles: Map<Int, Int>,
-    val moves: Int
-)
-
 private class BarProgressState(
     val spec: CatalogBarSpec,
     val levels: List<LevelLayout>
 ) {
     val unlockedLevels: BooleanArray = BooleanArray(levels.size) { it == 0 }
     val bestStarsByLevel: IntArray = IntArray(levels.size) { 0 }
-    val unfinishedRuns: MutableMap<Int, SavedRunState> = mutableMapOf()
+    val unfinishedRuns: MutableMap<Int, PersistedRunState> = mutableMapOf()
     var bonusAwarded: Int = 0
 
     fun reset() {
@@ -756,7 +757,7 @@ private class BarProgressState(
     }
 }
 
-class LevelSession(
+class GameRunModule(
     levels: List<LevelLayout> = DEFAULT_UNDER_LEVELS,
     val streetName: String = "Зыбицкая",
     val barName: String = "Under",
@@ -775,24 +776,12 @@ class LevelSession(
             initialCeiling: Int = 120,
             initialRecoveryProgressMillis: Long = 0L,
             store: GameStateStore? = null
-        ): LevelSession = LevelSession(
+        ): GameRunModule = GameRunModule(
             initialStamina = initialStamina,
             initialCeiling = initialCeiling,
             initialRecoveryProgressMillis = initialRecoveryProgressMillis,
             startOnWorldMap = true,
             awardsBarBonusOnCompletion = true,
-            store = store
-        )
-
-        fun createAppSession(
-            initialStamina: Int = 120,
-            initialCeiling: Int = 120,
-            initialRecoveryProgressMillis: Long = 0L,
-            store: GameStateStore? = null
-        ): LevelSession = createLiveGame(
-            initialStamina = initialStamina,
-            initialCeiling = initialCeiling,
-            initialRecoveryProgressMillis = initialRecoveryProgressMillis,
             store = store
         )
 
@@ -802,10 +791,10 @@ class LevelSession(
             levels: List<LevelLayout> = DEFAULT_UNDER_LEVELS,
             streetName: String = "Зыбицкая",
             barName: String = "Under"
-        ): LevelSession {
+        ): GameRunModule {
             val loaded = store.load()
             if (loaded == null) {
-                val fresh = LevelSession(
+                val fresh = GameRunModule(
                     levels = levels,
                     streetName = streetName,
                     barName = barName,
@@ -835,8 +824,8 @@ class LevelSession(
             streetName: String = "Зыбицкая",
             barName: String = "Under",
             store: GameStateStore? = null
-        ): LevelSession {
-            val session = LevelSession(
+        ): GameRunModule {
+            val game = GameRunModule(
                 levels = levels,
                 streetName = streetName,
                 barName = barName,
@@ -847,8 +836,8 @@ class LevelSession(
                 awardsBarBonusOnCompletion = true,
                 store = store
             )
-            session.restoreFromPersisted(persisted, atClockMillis)
-            return session
+            game.restoreFromPersisted(persisted, atClockMillis)
+            return game
         }
 
         fun coldStartFromSerialized(
@@ -857,7 +846,7 @@ class LevelSession(
             levels: List<LevelLayout> = DEFAULT_UNDER_LEVELS,
             streetName: String = "Зыбицкая",
             barName: String = "Under"
-        ): LevelSession {
+        ): GameRunModule {
             val parsed = PersistedGameState.deserialize(serialized)
                 ?: return createLiveGame().also {
                     if (atClockMillis != null) it.onClockTimeMillis(atClockMillis)
@@ -921,11 +910,7 @@ class LevelSession(
             put(spec.barName, BarProgressState(spec = spec, levels = barLayoutList))
         }
         if (barName !in this) {
-            val inferredCity = when (streetName) {
-                "Суворова" -> "Витебск"
-                "Патрики" -> "Москва"
-                else -> "Минск"
-            }
+            val inferredCity = CatalogBarSpec.cityForStreet(streetName)
             val customSpec = CatalogBarSpec(
                 cityName = inferredCity,
                 streetName = streetName,
@@ -936,14 +921,10 @@ class LevelSession(
         }
     }
 
-    private var currentCityName: String = barProgressByName[barName]?.spec?.cityName ?: when (streetName) {
-        "Суворова" -> "Витебск"
-        "Патрики" -> "Москва"
-        else -> "Минск"
-    }
+    private var currentCityName: String =
+        barProgressByName[barName]?.spec?.cityName ?: CatalogBarSpec.cityForStreet(streetName)
     private var currentStreetName: String = barProgressByName[barName]?.spec?.streetName ?: streetName
     private var currentBarName: String = barName
-    private var hasNavigatedMap: Boolean = startOnWorldMap
 
     private val activeBarState: BarProgressState
         get() = barProgressByName.getValue(currentBarName)
@@ -966,7 +947,7 @@ class LevelSession(
     private val bestStarsByLevel: IntArray
         get() = activeBarState.bestStarsByLevel
 
-    private val unfinishedRuns: MutableMap<Int, SavedRunState>
+    private val unfinishedRuns: MutableMap<Int, PersistedRunState>
         get() = activeBarState.unfinishedRuns
 
     private var activeLevelIndex: Int = 0
@@ -1040,7 +1021,7 @@ class LevelSession(
         val hasProgressOrCharges =
             moves > 0 || history.isNotEmpty() || chargedBottles.isNotEmpty() || bottles != startBottles
         if (hasProgressOrCharges) {
-            unfinishedRuns[activeLevelIndex] = SavedRunState(
+            unfinishedRuns[activeLevelIndex] = PersistedRunState(
                 bottles = bottles.map { it.toList() },
                 history = history.map { snap -> snap.map { it.toList() } },
                 chargedBottles = chargedBottles.toMap(),
@@ -1147,22 +1128,16 @@ class LevelSession(
         openedDrinkCard = null
         selectedIndex = null
         worldNotice = null
-        hasNavigatedMap = true
         mapScreen = ScreenId.WORLD_MAP
     }
 
     fun tapCity(cityName: String): Boolean {
         if (defeated) return false
-        if (cityName in listOf("Могилёв", "Гомель", "Смоленск", "Ленинград")) {
+        if (cityName in CatalogBarSpec.DIMMED_WORLD_CITIES) {
             worldNotice = "В городе $cityName уровни появятся позже."
             return false
         }
-        val playableStreet = when (cityName) {
-            "Минск" -> "Зыбицкая"
-            "Витебск" -> "Суворова"
-            "Москва" -> "Патрики"
-            else -> return false
-        }
+        val playableStreet = CatalogBarSpec.CITY_TO_PLAYABLE_STREET[cityName] ?: return false
         if (onCounter) {
             saveCurrentRunIfUnfinished()
         }
@@ -1170,7 +1145,6 @@ class LevelSession(
         openedDrinkCard = null
         selectedIndex = null
         worldNotice = null
-        hasNavigatedMap = true
         currentCityName = cityName
         currentStreetName = playableStreet
         mapScreen = ScreenId.CITY_MAP
@@ -1179,12 +1153,7 @@ class LevelSession(
 
     fun tapStreet(streetName: String): Boolean {
         if (defeated) return false
-        val expectedCity = when (streetName) {
-            "Зыбицкая" -> "Минск"
-            "Суворова" -> "Витебск"
-            "Патрики" -> "Москва"
-            else -> return false
-        }
+        val expectedCity = CatalogBarSpec.STREET_TO_CITY[streetName] ?: return false
         if (mapScreen == ScreenId.CITY_MAP && currentCityName != expectedCity) return false
         if (onCounter) {
             saveCurrentRunIfUnfinished()
@@ -1192,7 +1161,6 @@ class LevelSession(
         onCounter = false
         openedDrinkCard = null
         selectedIndex = null
-        hasNavigatedMap = true
         currentCityName = expectedCity
         currentStreetName = streetName
         mapScreen = ScreenId.STREET_MAP
@@ -1211,7 +1179,6 @@ class LevelSession(
         onCounter = false
         openedDrinkCard = null
         selectedIndex = null
-        hasNavigatedMap = true
         currentCityName = targetState.spec.cityName
         currentStreetName = targetState.spec.streetName
         currentBarName = targetState.spec.barName
@@ -1349,7 +1316,7 @@ class LevelSession(
         return state
     }
 
-    fun coldStart(atClockMillis: Long? = null): LevelSession {
+    fun coldStart(atClockMillis: Long? = null): GameRunModule {
         val currentStore = store
         if (currentStore != null) {
             return coldStartFrom(
@@ -1407,10 +1374,7 @@ class LevelSession(
             awardedBarBonuses = awardedBarBonuses.toMap(),
             closedOnActiveRunDrinkSheet = wasOnActiveRunDrinkSheet,
             activeRunBarName = if (wasOnActiveRunDrinkSheet) currentBarName else null,
-            activeRunLevelNumber = if (wasOnActiveRunDrinkSheet) (activeLevelIndex + 1) else null,
-            storedOpenedSheets = emptyList(),
-            storedViewedCards = emptyList(),
-            storedSelectedBottle = null
+            activeRunLevelNumber = if (wasOnActiveRunDrinkSheet) (activeLevelIndex + 1) else null
         )
     }
 
@@ -1441,7 +1405,7 @@ class LevelSession(
                     state.unlockedLevels[idx] = lvlState.unlocked
                     state.bestStarsByLevel[idx] = lvlState.bestStars
                     if (lvlState.unfinishedRun != null) {
-                        state.unfinishedRuns[idx] = SavedRunState(
+                        state.unfinishedRuns[idx] = PersistedRunState(
                             bottles = lvlState.unfinishedRun.bottles.map { it.toList() },
                             history = lvlState.unfinishedRun.history.map { snap -> snap.map { it.toList() } },
                             chargedBottles = lvlState.unfinishedRun.chargedBottles.toMap(),
@@ -1455,7 +1419,6 @@ class LevelSession(
         selectedIndex = null
         openedDrinkCard = null
         worldNotice = null
-        hasNavigatedMap = true
 
         if (defeated) {
             onCounter = false
@@ -1499,23 +1462,6 @@ class LevelSession(
         advanceTimeMillis(minutes.toLong() * 60_000L)
     }
 
-    fun applyBarBonus(bonusUnits: Int, targetBarName: String = currentBarName) {
-        if (defeated || bonusUnits <= 0) return
-        val boundedBonus = bonusUnits.coerceIn(1, 3)
-        val alreadyAwarded = awardedBarBonuses[targetBarName] ?: 0
-        val delta = if (targetBarName in awardedBarBonuses && alreadyAwarded > 0) {
-            (boundedBonus - alreadyAwarded).coerceAtLeast(0)
-        } else {
-            bonusUnits
-        }
-        if (delta <= 0) return
-        val newBonus = alreadyAwarded + delta
-        awardedBarBonuses[targetBarName] = newBonus
-        barProgressByName[targetBarName]?.bonusAwarded = newBonus
-        staminaCeiling += delta
-        stamina = (stamina + delta).coerceAtMost(staminaCeiling)
-    }
-
     fun startNewGame() {
         stamina = 120
         staminaCeiling = 120
@@ -1527,11 +1473,7 @@ class LevelSession(
         }
         currentBarName = barName
         currentStreetName = barProgressByName[barName]?.spec?.streetName ?: streetName
-        currentCityName = barProgressByName[barName]?.spec?.cityName ?: when (streetName) {
-            "Суворова" -> "Витебск"
-            "Патрики" -> "Москва"
-            else -> "Минск"
-        }
+        currentCityName = barProgressByName[barName]?.spec?.cityName ?: CatalogBarSpec.cityForStreet(streetName)
         awardedBarBonuses.clear()
         awardedBarBonuses[barName] = 0
         activeLevelIndex = 0
@@ -1543,12 +1485,9 @@ class LevelSession(
         selectedIndex = null
         openedDrinkCard = null
         worldNotice = null
-        mapScreen = if (startOnWorldMap || hasNavigatedMap) ScreenId.WORLD_MAP else null
-        won = !startOnFilmstrip && mapScreen == null && isSolved()
-        if (won) {
-            recordVictoryForActiveLevel()
-        }
-        onCounter = !startOnFilmstrip && mapScreen == null
+        mapScreen = ScreenId.WORLD_MAP
+        won = false
+        onCounter = false
         store?.save(exportPersistedState())
     }
 
