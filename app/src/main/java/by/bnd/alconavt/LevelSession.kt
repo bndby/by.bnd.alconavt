@@ -222,6 +222,8 @@ data class FilmstripSnapshot(
     val intoxicationState: IntoxicationState?,
     val stateLabel: String,
     val cards: List<LevelCardSnapshot>,
+    val awardedBarBonus: Int = 0,
+    val barAwardedBonus: Int = awardedBarBonus,
     val restartButton: ActionButtonSnapshot? = null
 )
 
@@ -467,6 +469,9 @@ data class CounterSnapshot(
     val extraWaste: Int = 0,
     val bestStars: Int = 0,
     val recordedStars: Int = bestStars,
+    val awardedBarBonus: Int = 0,
+    val barAwardedBonus: Int = awardedBarBonus,
+    val awardedBarBonuses: Map<String, Int> = emptyMap(),
     val screen: ScreenId = ScreenId.COUNTER,
     val streetName: String = "Зыбицкая",
     val barName: String = "Under",
@@ -485,6 +490,7 @@ data class CounterSnapshot(
         intoxicationState = intoxicationState,
         stateLabel = stateLabel,
         cards = levelCards,
+        awardedBarBonus = awardedBarBonus,
         restartButton = null
     ),
     val drinkCard: DrinkCardSnapshot? = null,
@@ -505,7 +511,8 @@ class LevelSession(
     initialStamina: Int = 120,
     initialCeiling: Int = 120,
     initialRecoveryProgressMillis: Long = 0L,
-    private val startOnFilmstrip: Boolean = false
+    private val startOnFilmstrip: Boolean = false,
+    private val awardsBarBonusOnCompletion: Boolean = true
 ) {
     constructor(
         capacity: Int,
@@ -530,7 +537,8 @@ class LevelSession(
         initialStamina = initialStamina,
         initialCeiling = initialCeiling,
         initialRecoveryProgressMillis = initialRecoveryProgressMillis,
-        startOnFilmstrip = false
+        startOnFilmstrip = false,
+        awardsBarBonusOnCompletion = false
     )
 
     private val barLevels: List<LevelLayout> = if (levels.isNotEmpty()) {
@@ -548,6 +556,7 @@ class LevelSession(
     private val unlockedLevels: BooleanArray = BooleanArray(barLevels.size) { it == 0 }
     private val bestStarsByLevel: IntArray = IntArray(barLevels.size) { 0 }
     private val unfinishedRuns: MutableMap<Int, SavedRunState> = mutableMapOf()
+    private val awardedBarBonuses: MutableMap<String, Int> = mutableMapOf(barName to 0)
 
     private var startBottles: List<List<Drink>> = barLevels[0].initialBottles.map { it.toList() }
     private var bottles: MutableList<MutableList<Drink>> = startBottles.map { it.toMutableList() }.toMutableList()
@@ -585,6 +594,24 @@ class LevelSession(
             unlockedLevels[activeLevelIndex + 1] = true
         }
         unfinishedRuns.remove(activeLevelIndex)
+        if (awardsBarBonusOnCompletion) {
+            evaluateAndAwardBarBonusIfComplete()
+        }
+    }
+
+    private fun evaluateAndAwardBarBonusIfComplete() {
+        val levelCount = bestStarsByLevel.size
+        if (levelCount <= 0) return
+        if (bestStarsByLevel.any { it <= 0 }) return
+        val sumStars = bestStarsByLevel.sum()
+        val roundedBonus = ((sumStars * 2 + levelCount) / (2 * levelCount)).coerceIn(1, 3)
+        val alreadyAwarded = awardedBarBonuses[barName] ?: 0
+        if (roundedBonus > alreadyAwarded) {
+            val delta = roundedBonus - alreadyAwarded
+            awardedBarBonuses[barName] = roundedBonus
+            staminaCeiling += delta
+            stamina = (stamina + delta).coerceAtMost(staminaCeiling)
+        }
     }
 
     private fun saveCurrentRunIfUnfinished() {
@@ -787,10 +814,19 @@ class LevelSession(
         advanceTimeMillis(minutes.toLong() * 60_000L)
     }
 
-    fun applyBarBonus(bonusUnits: Int) {
+    fun applyBarBonus(bonusUnits: Int, targetBarName: String = barName) {
         if (defeated || bonusUnits <= 0) return
-        staminaCeiling += bonusUnits
-        stamina = (stamina + bonusUnits).coerceAtMost(staminaCeiling)
+        val boundedBonus = bonusUnits.coerceIn(1, 3)
+        val alreadyAwarded = awardedBarBonuses[targetBarName] ?: 0
+        val delta = if (targetBarName in awardedBarBonuses && alreadyAwarded > 0) {
+            (boundedBonus - alreadyAwarded).coerceAtLeast(0)
+        } else {
+            bonusUnits
+        }
+        if (delta <= 0) return
+        awardedBarBonuses[targetBarName] = alreadyAwarded + delta
+        staminaCeiling += delta
+        stamina = (stamina + delta).coerceAtMost(staminaCeiling)
     }
 
     fun startNewGame() {
@@ -804,6 +840,8 @@ class LevelSession(
             bestStarsByLevel[i] = 0
         }
         unfinishedRuns.clear()
+        awardedBarBonuses.clear()
+        awardedBarBonuses[barName] = 0
         activeLevelIndex = 0
         startBottles = barLevels[0].initialBottles.map { it.toList() }
         bottles = startBottles.map { it.toMutableList() }.toMutableList()
@@ -976,6 +1014,7 @@ class LevelSession(
         }
         val currentLevelNum = activeLevelIndex + 1
         val currentBestStars = bestStarsByLevel[activeLevelIndex]
+        val currentBarBonus = awardedBarBonuses[barName] ?: 0
         return CounterSnapshot(
             capacity = capacity,
             glass = glass,
@@ -1017,6 +1056,9 @@ class LevelSession(
             extraWaste = waste,
             bestStars = currentBestStars,
             recordedStars = currentBestStars,
+            awardedBarBonus = currentBarBonus,
+            barAwardedBonus = currentBarBonus,
+            awardedBarBonuses = awardedBarBonuses.toMap(),
             screen = currentScreen,
             levelCards = cards,
             drinkCard = cardDrink?.toCardSnapshot(),
