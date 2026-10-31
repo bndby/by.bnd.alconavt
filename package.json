@@ -1,0 +1,15 @@
+{
+  "name": "alkonavt",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^6.4.1",
+    "vitest": "^3.2.4"
+  }
+}
