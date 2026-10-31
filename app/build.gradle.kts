@@ -4,7 +4,7 @@ plugins {
 }
 
 val releaseVersionCode = (findProperty("releaseVersionCode") as String?)?.toInt() ?: 1
-val releaseVersionName = findProperty("releaseVersionName") as String? ?: "1.0"
+val releaseVersionName = findProperty("releaseVersionName") as String? ?: "0.0.0"
 
 val envKeystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
 val envKeystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")

@@ -16,6 +16,10 @@ on:
       - "gradle/wrapper/**"
       - "gradlew"
       - "gradlew.bat"
+      - "CHANGELOG.md"
+      - ".github/workflows/release.yml"
+      - "scripts/release-version.sh"
+      - "scripts/release-version.test.bash"
 
 concurrency:
   group: release-main
@@ -82,9 +86,8 @@ jobs:
 
       - name: Android SDK
         uses: android-actions/setup-android@v4
-
-      - name: Пакеты SDK
-        run: sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+        with:
+          packages: platform-tools platforms;android-35 build-tools;35.0.0
 
       - name: Unit-тесты
         run: ./gradlew :app:testDebugUnitTest --no-daemon
